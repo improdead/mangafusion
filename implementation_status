@@ -1,0 +1,106 @@
+Implementation Status — Warp v0.2 (mangafusion)
+
+Summary
+- A minimal end-to-end skeleton is implemented:
+  - Backend (NestJS) exposes the required endpoints and an SSE stream.
+  - A stubbed planner creates a 10-page outline.
+  - A simulated renderer “generates” pages sequentially and streams page_progress and page_done events.
+  - Frontend (Next.js) provides a simple form to create an episode and a reader page that streams pages as they complete.
+- Planner calls Gemini when GEMINI_API_KEY is set (default model: gemini-2.5-flash); generation remains simulated; storage is in-memory.
+
+Backend (NestJS) — Status
+Implemented
+- Endpoints
+  - POST /planner — accepts seed (title, genre_tags, tone, setting, visual_vibe, cast), creates an episode, and now calls Gemini to return { episodeId, outline } with a real 10-page outline. Falls back to a stub if GEMINI_API_KEY is not set or parsing fails.
+  - GET  /episodes/:id — returns episode metadata including pages and rendererModel.
+  - POST /episodes/:id/generate10 — sequentially simulates generation of pages 1–10 and emits SSE events.
+  - GET  /episodes/:id/stream — SSE endpoint streaming page_progress, page_done, and page_failed events.
+  - GET  /pages/:id — returns page metadata from storage (in-memory or Prisma if enabled).
+  - POST /pages/:id/read — placeholder returns 501 Not Implemented style payload.
+- Planner integration
+  - Uses @google/generative-ai and reads GEMINI_API_KEY from env; model configurable via PLANNER_MODEL (default gemini-2.5-flash).
+  - Robust JSON extraction with strict shape validation (expects 10 pages).
+- Persistence (Prisma)
+  - Prisma schema for Episode/Page with PageStatus enum.
+  - If DATABASE_URL is set, planner creation writes Episode + 10 Page rows; simulated generation updates Page rows.
+  - If DATABASE_URL is not set, in-memory storage is used.
+- Queueing (BullMQ)
+  - QueueService scaffolding for generate_page (enabled when REDIS_URL is set).
+  - Worker stub (npm run worker:generate) uses RENDERER_IMAGE_MODEL default and updates Page rows (if DB enabled).
+- SSE/Event Bus
+  - In-memory RxJS Subjects keyed by episodeId, emitting event payloads matching Appendix B shapes (page_progress, page_done, page_failed).
+- Generation flow (simulated)
+  - Sequential page generation with progress ticks and final page_done events.
+  - Placeholder image URLs (https://placehold.co/1024x1536) are returned.
+
+Partial
+- Input validation: Only minimal checks; should add DTOs and class-validator.
+- Error handling: Basic; needs standardized error responses.
+- Edit flow: Not yet exposed; structure allows adding re-enqueue logic later.
+- Continuity rules: Referenced but not enforced (no real image conditioning, only simulated flow).
+- Configuration: CORS hard-coded for http://localhost:3000; should move to config/env.
+- Persistence/Queueing: Prisma and BullMQ scaffolding are present; migration and GPU worker wiring pending.
+
+Not Implemented (v0.2 targets that require infra)
+- BullMQ (Redis) job queues and real worker processes.
+- GPU worker integration (ComfyUI + Nano Banana + IP-Adapter, img2img, ControlNet Lineart).
+- S3/R2 upload of generated page PNGs.
+- Prisma + Postgres models and persistence of Episode/Page/Outline metadata.
+- Vision/OCR and TTS (e.g., Gemini for text extraction, ElevenLabs for audio).
+- Observability (Sentry + OTEL) and structured logging.
+
+Frontend (Next.js) — Status
+Implemented
+- New Episode form (pages/index.tsx) to collect seed (title, genre tags, tone, setting, optional vibe, cast list) and call the backend.
+- Reader page (pages/episodes/[id].tsx) that subscribes to SSE and reveals pages as page_done events arrive.
+
+Partial
+- Styling: Plain inline styles; no Tailwind yet.
+- Reader: Renders full-page images; no panel layout (React-Konva) or editing capabilities yet.
+- Read button (Vision→TTS): Not present; backend endpoint is stubbed only.
+
+Not Implemented
+- Editor UI to modify prompts and reflow downstream pages.
+- Panel layout drawing/interaction (React-Konva).
+- CBZ/EPUB3 export; audio streaming.
+
+What I need from you
+- Environment and runtime
+  - Confirm backend port (4000) and frontend port (3000), or provide alternates.
+- Data model (v0.1 reference)
+  - If you have an existing v0.1 schema, please share it to align Prisma models.
+- Credentials and integration details
+  - Postgres DATABASE_URL
+  - Redis URL for BullMQ
+  - S3/R2 credentials (endpoint/region/bucket names)
+  - Gemini 2.5 Flash API access details for Planner
+  - ElevenLabs API key (or alternate TTS provider)
+  - GPU worker endpoint(s) for Comfy/Nano Banana + any required auth
+- Product choices
+  - Use Tailwind + React-Konva on the frontend now, or defer until after backend integrations?
+  - Any specific UI/UX mocks or brand styles to follow?
+
+Recommended next steps (once you confirm)
+1) Persistence (Prisma + Postgres)
+   - Define Episode, Page, and Outline models; migrate; replace in-memory store.
+2) Queueing (BullMQ + Redis)
+   - Implement generate_page queue; separate worker process for page generation lifecycle (even if simulated initially).
+3) Planner integration (Gemini)
+   - Implement strict JSON response parsing into PlannerOutput; validate schema.
+4) Renderer worker integration (Comfy/Nano Banana)
+   - Wire Page 1 detailed prompt and Page 2–10 continuation templates with reference images; upload to S3/R2.
+5) Reader enhancements
+   - Tailwind styling; basic panel grid rendering; add a Read button invoking /pages/:id/read once TTS is integrated.
+6) Observability and DX
+   - Sentry + OTEL, structured logs, error handling middleware.
+
+How to run locally (after dependencies are installed)
+- Backend: PORT=4000 npm run dev (in backend folder)
+- Frontend: NEXT_PUBLIC_API_BASE=http://localhost:4000 npm run dev (in web folder)
+- Optional: Prisma client codegen: npm run prisma:generate (requires prisma CLI)
+- Optional: Worker stub: REDIS_URL=redis://... npm run worker:generate
+
+Notes
+- All generation is currently simulated with placeholders to demonstrate the streaming and UI flow per Warp v0.2.
+- The code is designed so that swapping in real Planner/Renderer/Queues/Storage later should require minimal changes to the API surface.
+

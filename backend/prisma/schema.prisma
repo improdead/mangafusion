@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PageStatus {
+  queued
+  in_progress
+  done
+  failed
+}
+
+model Episode {
+  id            String   @id @default(uuid())
+  seedInput     Json
+  outline       Json?
+  rendererModel String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  pages         Page[]
+  characters    Character[]
+}
+
+model Page {
+  id         String     @id @default(uuid())
+  episodeId  String
+  pageNumber Int
+  status     PageStatus
+  imageUrl   String?
+  seed       Int?
+  version    Int?       @default(0)
+  error      String?
+  overlays   Json?
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, pageNumber])
+}
+
+model Character {
+  id            String   @id @default(uuid())
+  episodeId     String
+  name          String
+  description   String?
+  assetFilename String
+  imageUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, assetFilename])
+}
