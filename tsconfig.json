@@ -16,6 +16,12 @@
     "incremental": true
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "backend/src/**/*.controller.ts",
+    "backend/src/**/*.module.ts",
+    "backend/src/main.ts",
+    "backend/src/**/*.worker.ts"
+  ]
 }
 

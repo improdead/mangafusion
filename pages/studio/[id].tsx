@@ -45,6 +45,7 @@ export default function Studio() {
   const currentPage = useMemo(() => pages[currentIdx], [pages, currentIdx]);
   const currentOverlays = useMemo(() => currentPage ? (overlays[currentPage.id] || []) : [], [overlays, currentPage]);
   const [editPrompt, setEditPrompt] = useState('');
+  const [dialogueText, setDialogueText] = useState('');
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function Studio() {
       .then((ep) => {
         const ps = ep.pages?.filter((p: any) => !!p.imageUrl).map((p: any) => ({ id: p.id, pageNumber: p.pageNumber, imageUrl: p.imageUrl })) || [];
         setPages(ps);
-        if (ps.length > 0) loadOverlays(ps[0].id);
+        if (ps.length > 0) { loadOverlays(ps[0].id); loadDialogue(ps[0].id); }
       });
     fetch(`${API_BASE}/episodes/${id}/characters`).then(r=>r.json()).then((d)=> setCharacters(d.characters || []));
     fetch(`${API_BASE}/episodes/${id}/style-refs`).then(r=>r.json()).then((d)=> setStyleRefs(d.refs || []));
@@ -72,6 +73,22 @@ export default function Studio() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overlays: list })
     });
   }, []);
+
+  const loadDialogue = useCallback((pageId: string) => {
+    fetch(`${API_BASE}/pages/${pageId}/dialogue`).then(r=>r.json()).then((d)=>{
+      const arr = (d?.dialogues || []) as any[];
+      const text = arr.map((x, idx) => {
+        const who = x.character ? `${x.character}: ` : '';
+        return `${who}${x.text}`;
+      }).join('\n');
+      setDialogueText(text);
+    }).catch(()=> setDialogueText(''));
+  }, []);
+
+  // When changing current page, load its dialogue text
+  useEffect(() => {
+    if (currentPage?.id) loadDialogue(currentPage.id);
+  }, [currentPage?.id, loadDialogue]);
 
   const addOverlay = (type: Overlay['type'], init?: Partial<Overlay>) => {
     if (!currentPage) return;
@@ -95,7 +112,7 @@ export default function Studio() {
     setEditing(true);
     try {
       const res = await fetch(`${API_BASE}/pages/${currentPage.id}/regenerate`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: editPrompt, styleRefUrls: useAllStyleRefs ? styleRefs : [] })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: editPrompt, dialogueTextOverride: dialogueText, styleRefUrls: useAllStyleRefs ? styleRefs : [] })
       });
       const updated = await res.json();
       if (!res.ok || updated.error) throw new Error(updated.error || 'Edit failed');
@@ -275,95 +292,37 @@ export default function Studio() {
         {/* Tools */}
         <aside className="w-80 border-l bg-white p-4 space-y-4 overflow-y-auto">
           <h3 className="font-semibold">Tools</h3>
-          <div className="grid grid-cols-3 gap-2">
-            <button className="btn-secondary" onClick={()=> addOverlay('text')}>Text</button>
-            <button className="btn-secondary" onClick={()=> addOverlay('bubble', { text: '', w: 220, h: 100, stroke: '#000000' })}>Bubble</button>
-            <button className="btn-secondary" onClick={()=> {
-              const first = characters.find(c=> !!c.imageUrl);
-              if (first) addOverlay('image', { imageUrl: first.imageUrl, w: 180, h: 180 });
-            }}>Image</button>
+          <div>
+            <h4 className="font-medium mb-2">Dialogue For This Page</h4>
+            <textarea
+              className="input-field"
+              rows={6}
+              value={dialogueText}
+              onChange={(e)=> setDialogueText(e.target.value)}
+              placeholder="One line per bubble, e.g.\nAoi: What was that sound?\nKenji: Stay sharp."
+            />
+            <div className="flex justify-end mt-2">
+              <button className="btn-secondary text-sm" onClick={() => currentPage && loadDialogue(currentPage.id)}>Reset from Planner</button>
+            </div>
           </div>
 
-          {/* AI Edit */}
-          <div className="mt-4">
-            <h4 className="font-medium mb-2">AI Edit This Page</h4>
+          <div className="mt-2">
+            <h4 className="font-medium mb-2">Visual Edit Prompt</h4>
             <textarea
               className="input-field"
               rows={4}
               value={editPrompt}
               onChange={(e)=> setEditPrompt(e.target.value)}
-              placeholder="e.g. Add rain; increase dramatic lighting; add speed lines in panel 3; keep characters the same"
+              placeholder="Describe visual changes (lighting, pose, camera, effects, etc.)"
             />
             <label className="flex items-center space-x-2 mt-2">
               <input type="checkbox" checked={useAllStyleRefs} onChange={(e)=> setUseAllStyleRefs(e.target.checked)} />
               <span className="text-sm text-gray-600">Use all style refs</span>
             </label>
             <button className="btn-primary mt-2 w-full" onClick={applyAIEdit} disabled={editing || !currentPage}>
-              {editing ? 'Applying...' : 'Apply AI Edit'}
+              {editing ? 'Updating...' : 'Update Page'}
             </button>
-            <p className="text-xs text-gray-500 mt-1">Edits use the current page image and character references for consistency.</p>
-          </div>
-          <div>
-            <button className="btn-secondary w-full" onClick={insertDialogue}>Insert Dialogue Suggestions</button>
-            <p className="text-xs text-gray-500 mt-1">Imports suggested bubbles from the planner for this page.</p>
-          </div>
-          {selected && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Selected</span>
-                <button className="text-red-600 text-sm" onClick={removeSelected}>Delete</button>
-              </div>
-              {(() => {
-                const o = currentOverlays.find(x => x.id === selected.overlayId);
-                if (!o) return null;
-                return (
-                  <div className="space-y-3">
-                    {o.type !== 'image' && (
-                      <>
-                        <label className="block text-sm">Text</label>
-                        <textarea className="input-field" value={o.text || ''} onChange={(e)=> {
-                          const list = currentOverlays.map(x => x.id===o.id ? { ...x, text: e.target.value } : x);
-                          setOverlays((prev)=> ({...prev, [currentPage!.id]: list }));
-                        }} />
-                        <label className="block text-sm">Font Size</label>
-                        <input type="number" className="input-field" value={o.fontSize || 18} onChange={(e)=>{
-                          const fs = parseInt(e.target.value || '18', 10);
-                          const list = currentOverlays.map(x => x.id===o.id ? { ...x, fontSize: fs } : x);
-                          setOverlays((prev)=> ({...prev, [currentPage!.id]: list }));
-                        }} />
-                      </>
-                    )}
-                    {o.type === 'image' && (
-                      <>
-                        <label className="block text-sm">Character</label>
-                        <select className="input-field" value={o.imageUrl} onChange={(e)=>{
-                          const list = currentOverlays.map(x => x.id===o.id ? { ...x, imageUrl: e.target.value } : x);
-                          setOverlays((prev)=> ({...prev, [currentPage!.id]: list }));
-                        }}>
-                          {characters.filter(c=>!!c.imageUrl).map((c)=> (
-                            <option key={c.id} value={c.imageUrl}>{c.name}</option>
-                          ))}
-                        </select>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
-          <div>
-            <h4 className="font-medium mb-2">Characters</h4>
-            <div className="grid grid-cols-2 gap-2">
-              {characters.filter(c=>!!c.imageUrl).map((c) => (
-                <button key={c.id} className="border rounded-lg p-2 hover:bg-gray-50" onClick={()=> addOverlay('image', { imageUrl: c.imageUrl, w: 160, h: 160 })}>
-                  <div className="aspect-[3/4] bg-gray-50">
-                    {c.imageUrl && (<img src={c.imageUrl} className="w-full h-full object-cover" alt={c.name} />)}
-                  </div>
-                  <div className="text-xs mt-1 text-center">{c.name}</div>
-                </button>
-              ))}
-            </div>
+            <p className="text-xs text-gray-500 mt-1">Regenerates this page using the dialogue above and your visual prompt.</p>
           </div>
 
           <div>

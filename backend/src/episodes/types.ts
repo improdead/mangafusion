@@ -51,6 +51,7 @@ export type EpisodeSeed = {
   tone: string;
   setting: string;
   visual_vibe?: string;
+  description?: string; // optional user-provided synopsis/description
   cast: CastMember[];
 };
 

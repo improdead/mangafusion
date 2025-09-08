@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-@Injectable()
 export class StorageService {
     private supabase: SupabaseClient | null = null;
     private adminSupabase: SupabaseClient | null = null;
@@ -71,7 +70,7 @@ export class StorageService {
 
                 const { error: createError } = await clientToUse.storage.createBucket(this.bucket, {
                     public: true,
-                    allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+                    allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg'],
                     fileSizeLimit: 10485760, // 10MB
                 });
 
@@ -131,6 +130,33 @@ export class StorageService {
       });
 
     if (error) {
+      // Try to auto-fix allowed MIME types if we have admin client
+      if (this.adminSupabase && /mime type/i.test(error.message)) {
+        try {
+          await this.adminSupabase.storage.updateBucket(this.bucket, {
+            public: true,
+            allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg'],
+            fileSizeLimit: 10485760,
+          } as any);
+          const retry = await this.supabase.storage
+            .from(this.bucket)
+            .upload(filename, buffer, { contentType, upsert: true });
+          if (!retry.error) {
+            const { data: pub } = this.supabase.storage.from(this.bucket).getPublicUrl(filename);
+            return pub.publicUrl;
+          }
+        } catch {}
+      }
+      // Last resort: try generic content-type
+      try {
+        const retry2 = await this.supabase.storage
+          .from(this.bucket)
+          .upload(filename, buffer, { contentType: 'application/octet-stream', upsert: true });
+        if (!retry2.error) {
+          const { data: pub } = this.supabase.storage.from(this.bucket).getPublicUrl(filename);
+          return pub.publicUrl;
+        }
+      } catch {}
       throw new Error(`Audio upload failed: ${error.message}`);
     }
 

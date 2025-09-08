@@ -7,7 +7,6 @@ interface TTSRequest {
   model_id?: string;
 }
 
-@Injectable()
 export class TTSService {
   private readonly apiKey = process.env.ELEVENLABS_API_KEY;
   private readonly baseUrl = 'https://api.elevenlabs.io/v1';

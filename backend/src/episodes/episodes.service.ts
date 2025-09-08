@@ -7,12 +7,12 @@ import { RendererService } from '../renderer/renderer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Character, Episode, EpisodeSeed, Page, PlannerOutput, PlannerOutlinePage, PlannerCharacter } from './types';
 
-@Injectable()
 export class EpisodesService {
   private episodes = new Map<string, Episode>();
   private pages = new Map<string, Page>();
   private characters = new Map<string, Character[]>(); // episodeId -> characters
   private styleRefs = new Map<string, string[]>(); // episodeId -> style ref URLs (in-memory fallback)
+  private dialogueOverrides = new Map<string, string>(); // pageId -> dialogue override text
 
   constructor(
     private readonly events: EventsService,
@@ -165,7 +165,7 @@ export class EpisodesService {
     }
   }
 
-  async regeneratePage(pageId: string, prompt: string, styleRefUrls: string[] = []): Promise<Page> {
+  async regeneratePage(pageId: string, prompt: string, styleRefUrls: string[] = [], dialogueTextOverride?: string): Promise<Page> {
     const page = await this.getPageById(pageId);
     if (!page) throw new Error('Page not found');
     const ep = await this.getEpisode(page.episodeId);
@@ -183,6 +183,37 @@ export class EpisodesService {
     const visualStyle = ep.outline.pages[0]?.visual_style || 'manga style';
     const characterAssets = (await this.getEpisode(ep.id))?.characters?.filter(c => !!c.imageUrl) || [];
 
+    // Persist dialogue override if provided
+    if (typeof dialogueTextOverride === 'string') {
+      const trimmed = dialogueTextOverride.trim();
+      if (trimmed) {
+        this.dialogueOverrides.set(pageId, trimmed);
+        if (this.prisma.enabled) {
+          try {
+            const raw = await this.prisma.client.page.findUnique({ where: { id: pageId }, select: { overlays: true } as any });
+            const ov = (raw as any)?.overlays;
+            const merged = Array.isArray(ov)
+              ? { items: ov, dialogueOverride: trimmed }
+              : { ...(ov || {}), dialogueOverride: trimmed };
+            await this.prisma.client.page.update({ where: { id: pageId }, data: { overlays: merged as any } });
+          } catch {}
+        }
+      } else {
+        // clearing override
+        this.dialogueOverrides.delete(pageId);
+        if (this.prisma.enabled) {
+          try {
+            const raw = await this.prisma.client.page.findUnique({ where: { id: pageId }, select: { overlays: true } as any });
+            const ov = (raw as any)?.overlays;
+            if (ov && typeof ov === 'object' && 'dialogueOverride' in ov) {
+              const { dialogueOverride, ...rest } = ov as any;
+              await this.prisma.client.page.update({ where: { id: pageId }, data: { overlays: rest as any } });
+            }
+          } catch {}
+        }
+      }
+    }
+
     const MAX_ATTEMPTS = 2;
     let result: { imageUrl: string; seed: number } | null = null;
     let lastErr: any = null;
@@ -197,6 +228,7 @@ export class EpisodesService {
           baseImageUrl: page.imageUrl,
           editPrompt: prompt,
           styleRefUrls,
+          dialogueTextOverride,
         });
         break;
       } catch (e) {
@@ -267,7 +299,9 @@ export class EpisodesService {
           seed: p.seed ?? undefined,
           version: p.version ?? undefined,
           error: p.error ?? undefined,
-          overlays: (p as any).overlays ?? undefined,
+          overlays: Array.isArray((p as any).overlays)
+            ? (p as any).overlays
+            : (p as any).overlays?.items ?? undefined,
         })),
         createdAt: new Date(e.createdAt).getTime(),
         updatedAt: new Date(e.updatedAt).getTime(),
@@ -561,9 +595,36 @@ export class EpisodesService {
   async getPageDialogue(pageId: string) {
     const page = await this.getPageById(pageId);
     if (!page) throw new Error('Page not found');
+
+    // 1) In-memory override (dev/server runtime)
+    const mem = this.dialogueOverrides.get(pageId);
+    if (mem && mem.trim()) return this.parseDialogueLines(mem);
+
+    // 2) Persisted override in DB overlays JSON (if present)
+    if (this.prisma.enabled) {
+      try {
+        const raw = await this.prisma.client.page.findUnique({ where: { id: pageId }, select: { overlays: true } as any });
+        const ov = (raw as any)?.overlays;
+        const override = typeof ov?.dialogueOverride === 'string' ? ov.dialogueOverride : undefined;
+        if (override && override.trim()) return this.parseDialogueLines(override);
+      } catch {}
+    }
+
+    // 3) Fallback to planner outline
     const ep = await this.getEpisode(page.episodeId);
     if (!ep || !ep.outline) throw new Error('Episode or outline not found');
     const outline = ep.outline.pages.find(p => p.page_number === page.pageNumber);
     return (outline as any)?.dialogues || [];
+  }
+
+  private parseDialogueLines(text: string) {
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    return lines.map((line, idx) => {
+      const m = line.match(/^([^:]+):\s*(.*)$/);
+      if (m) {
+        return { panel_number: idx + 1, character: m[1].trim(), text: (m[2] || '').trim(), type: 'dialogue' as const };
+      }
+      return { panel_number: idx + 1, character: null, text: line, type: 'narration' as const };
+    });
   }
 }

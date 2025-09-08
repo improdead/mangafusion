@@ -3,11 +3,13 @@ import { Observable, Subject } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 export type EventPayload =
+  | { type: 'planning_started'; episodeId: string; message?: string }
+  | { type: 'planning_progress'; episodeId: string; message?: string }
+  | { type: 'planning_complete'; episodeId: string; message?: string }
   | { type: 'page_progress'; episodeId: string; page: number; pct: number }
   | { type: 'page_done'; episodeId: string; page: number; imageUrl: string; seed: number; version: number }
   | { type: 'page_failed'; episodeId: string; page: number; error: string };
 
-@Injectable()
 export class EventsService {
   private streams = new Map<string, Subject<EventPayload>>();
 
