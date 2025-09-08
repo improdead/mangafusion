@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { EpisodeSeed, PlannerOutput } from '../episodes/types';
 
-@Injectable()
 export class PlannerService {
   private readonly apiKey = process.env.GEMINI_API_KEY;
   private readonly modelName = process.env.PLANNER_MODEL || 'gemini-2.5-flash';
@@ -64,6 +63,7 @@ export class PlannerService {
     const user = [
       'Make a 10-page outline for a manga episode based on this seed:',
       `- title: ${seed.title}`,
+      `- description: ${seed.description ?? ''}`,
       `- genre_tags: ${JSON.stringify(seed.genre_tags)}`,
       `- tone: ${seed.tone}`,
       `- setting: ${seed.setting}`,

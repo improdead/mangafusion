@@ -3,21 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
-    "dev:frontend": "next dev -p 3000",
-    "dev:backend": "cd backend && npm run dev",
+    "dev": "next dev -p 3000",
     "build": "next build",
-    "build:backend": "cd backend && npm run build",
     "start": "next start -p 3000",
-    "start:backend": "cd backend && npm run start",
+    "postinstall": "prisma generate --schema backend/prisma/schema.prisma || exit 0",
     "install:all": "npm install && cd backend && npm install",
-    "prisma:generate": "cd backend && npm run prisma:generate",
-    "prisma:migrate:dev": "cd backend && npm run prisma:migrate:dev"
+    "prisma:generate": "prisma generate --schema backend/prisma/schema.prisma",
+    "prisma:migrate:dev": "prisma migrate dev --name init --schema backend/prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema backend/prisma/schema.prisma"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.16.0",
+    "@nestjs/common": "^10.4.5",
+    "@prisma/client": "^5.16.2",
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.4.5",
+    "formidable": "^3.5.2",
     "next": "^15.5.2",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.10",
@@ -25,6 +31,7 @@
     "@types/react": "^18.2.66",
     "autoprefixer": "^10.4.21",
     "concurrently": "^8.2.2",
+    "prisma": "^5.16.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.4.5"

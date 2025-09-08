@@ -14,9 +14,9 @@ export type RenderRequest = {
     baseImageUrl?: string; // when editing an existing page
     editPrompt?: string; // user-provided modification request
     styleRefUrls?: string[]; // additional reference images to bias style
+    dialogueTextOverride?: string; // user-provided dialogue lines to render
 };
 
-@Injectable()
 export class RendererService {
     private readonly apiKey = process.env.GEMINI_API_KEY;
     private readonly config = getRendererConfig();
@@ -190,13 +190,16 @@ export class RendererService {
     private buildPrompt(request: RenderRequest): string {
         const { outline, episodeTitle, visualStyle } = request;
         
-        // Build dialogue context for visual storytelling
-        const dialogueContext = outline.dialogues?.length > 0 
+        // Build dialogue context – we will ask the model to render these lines as speech bubbles with text
+        let dialogueContext = outline.dialogues?.length > 0
             ? outline.dialogues.map(d => {
                 const speaker = d.character ? `${d.character}: ` : '';
                 return `Panel ${d.panel_number} - ${d.type}: ${speaker}"${d.text}"`;
             }).join('\n')
             : '';
+        if (request.dialogueTextOverride && request.dialogueTextOverride.trim()) {
+            dialogueContext = request.dialogueTextOverride.trim();
+        }
         
         // Build a detailed image generation prompt
         const prompt = [
@@ -208,8 +211,8 @@ export class RendererService {
             `Setting: ${outline.setting}`,
             `Key visual actions: ${outline.key_actions.join(', ')}`,
             '',
-            // Dialogue context for visual storytelling
-            dialogueContext && 'Dialogue and text context (for visual storytelling - DO NOT include text in image):',
+            // Dialogue to be INCLUDED in the image
+            dialogueContext && 'Dialogue to include as on-page speech bubbles (render the text in bubbles):',
             dialogueContext,
             dialogueContext && '',
             // Layout specifications
@@ -244,11 +247,11 @@ export class RendererService {
             '- Speed lines and motion effects where appropriate for action',
             '- Professional manga page layout with clear visual flow',
             '- High contrast and clear line art',
-            '- Visual storytelling that matches dialogue context without including actual text',
-            '- Speech bubble spaces where dialogue would appear (empty white bubbles)',
+            '- INCLUDE speech bubbles with readable text matching the dialogue lines above (upper-case, hand-lettered manga style).',
+            '- Place bubbles where appropriate within each panel; use tails pointing to speakers; avoid covering faces.',
             '',
             // Output specifications
-            'Output: A complete manga page as a single image, exactly 1024x1536 pixels (2:3 ratio), black and white.',
+            'Output: A complete manga page as a single image, exactly 1024x1536 pixels (2:3 ratio), black and white, with speech bubbles and text rendered.',
         ].filter(Boolean).join('\n');
         
         return prompt;

@@ -7,6 +7,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
 export default function Home() {
   const r = useRouter();
   const [title, setTitle] = useState('Shadow Sketch');
+  const [description, setDescription] = useState('');
   const [genreTags, setGenreTags] = useState('modern shonen, urban fantasy');
   const [tone, setTone] = useState('dynamic, heroic, hopeful');
   const [setting, setSetting] = useState('rain-slick neon city at dusk');
@@ -58,6 +59,7 @@ export default function Home() {
         .map((name) => ({ name, traits: 'mysterious character' }));
       const body = {
         title,
+        description,
         genre_tags: genreTags.split(',').map((s) => s.trim()).filter(Boolean),
         tone,
         setting,
@@ -148,8 +150,8 @@ export default function Home() {
               <div className="flex items-center">
                 <svg className="w-5 h-5 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-5a1 1 0 102 0 1 1 0 00-2 0zm1-8a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
                 <div>
-                  <div className="font-medium text-red-800">Backend not reachable</div>
-                  <div className="text-sm text-red-700">Start the API with `npm run dev` in <code>backend/</code> or set NEXT_PUBLIC_API_BASE to your API.</div>
+                  <div className="font-medium text-red-800">API not reachable</div>
+                  <div className="text-sm text-red-700">This app serves the API internally at <code>/api</code>. If this persists, reload the page or restart <code>npm run dev</code>. For external APIs, set <code>NEXT_PUBLIC_API_BASE</code>.</div>
                 </div>
               </div>
             </div>
@@ -159,18 +161,28 @@ export default function Home() {
         {/* Main Form */}
         <div className="glass-card max-w-2xl mx-auto p-8">
           <form onSubmit={onSubmit} className="space-y-8">
-            {/* Title */}
-            <div className="space-y-3">
-              <div className="section-label"><span className="text-purple-600">📖</span> Story Title</div>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="input-field w-full"
-                placeholder="Enter your manga title..."
-                required
-              />
-            </div>
+        {/* Title */}
+        <div className="space-y-3">
+          <div className="section-label"><span className="text-purple-600">📖</span> Story Title</div>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="input-field w-full"
+            placeholder="Enter your manga title..."
+            required
+          />
+          <div>
+            <label className="block text-sm text-gray-700 mt-2">Story Description</label>
+            <textarea
+              className="input-field w-full"
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Brief synopsis: who, what, stakes, vibe..."
+            />
+          </div>
+        </div>
 
             {/* Genre Tags */}
             <div className="space-y-3">
