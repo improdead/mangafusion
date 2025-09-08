@@ -4,3 +4,9 @@ backend/dist
 web/.next
 web/out
 
+.vercel
+.next
+.env
+.env.*
+!.env.example
+!.env.local.example
