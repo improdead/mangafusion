@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
@@ -20,6 +20,7 @@ export default function Home() {
   const [planningStatus, setPlanningStatus] = useState<string>('');
   const [heroTitle, setHeroTitle] = useState('Create Your AI Manga');
   const [heroSubtitle, setHeroSubtitle] = useState('Transform your ideas into stunning manga pages with AI-powered storytelling and image generation');
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then((r) => (r.ok ? r.json() : Promise.reject())).then(() => setApiUp(true)).catch(() => setApiUp(false));
@@ -45,6 +46,16 @@ export default function Home() {
       .catch(error => {
         console.log('Could not load words.md, using default text');
       });
+  }, []);
+
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
   }, []);
 
   async function onSubmit(e: React.FormEvent) {
@@ -77,8 +88,15 @@ export default function Home() {
       }
       const episodeId = planJson.episodeId as string;
 
+      // Close any existing EventSource before creating a new one
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
       // Listen for planning status updates
       const eventSource = new EventSource(`${API_BASE}/episodes/${episodeId}/stream`);
+      eventSourceRef.current = eventSource;
+
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -86,7 +104,10 @@ export default function Home() {
             setPlanningStatus(data.message || 'Planning in progress...');
           } else if (data.type === 'planning_complete') {
             setPlanningStatus(data.message || 'Planning complete!');
-            eventSource.close();
+            if (eventSourceRef.current) {
+              eventSourceRef.current.close();
+              eventSourceRef.current = null;
+            }
             // Continue with the rest of the process
             continueAfterPlanning(episodeId);
           }
@@ -95,9 +116,19 @@ export default function Home() {
         }
       };
 
+      eventSource.onerror = () => {
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+      };
+
       // Fallback in case SSE doesn't work
       setTimeout(() => {
-        eventSource.close();
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
         continueAfterPlanning(episodeId);
       }, 10000);
 

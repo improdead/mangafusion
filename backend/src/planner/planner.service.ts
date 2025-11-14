@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { EpisodeSeed, PlannerOutput } from '../episodes/types';
 
+@Injectable()
 export class PlannerService {
   private readonly geminiApiKey = process.env.GEMINI_API_KEY;
   private readonly openaiApiKey = process.env.OPENAI_API_KEY;

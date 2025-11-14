@@ -7,6 +7,7 @@ import { RendererService } from '../renderer/renderer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Character, Episode, EpisodeSeed, Page, PlannerOutput, PlannerOutlinePage, PlannerCharacter } from './types';
 
+@Injectable()
 export class EpisodesService {
   private episodes = new Map<string, Episode>();
   private pages = new Map<string, Page>();
@@ -37,6 +38,7 @@ export class EpisodesService {
       outline = this.stubOutline(seed);
     }
     const renderer = getRendererConfig();
+    const rendererModel = renderer.provider === 'openai' ? renderer.openaiModel : renderer.geminiModel;
 
     // Determine characters from planner output or seed
     const plannedCharacters = this.deriveCharacters(seed, outline);
@@ -47,7 +49,7 @@ export class EpisodesService {
           id,
           seedInput: seed as any,
           outline: outline as any,
-          rendererModel: renderer.imageModel,
+          rendererModel: rendererModel,
           pages: {
             create: Array.from({ length: 10 }).map((_, idx) => ({
               pageNumber: idx + 1,
@@ -63,7 +65,7 @@ export class EpisodesService {
         id: created.id,
         seedInput: seed,
         outline,
-        pages: created.pages.map((p) => ({
+        pages: created.pages.map((p: any) => ({
           id: p.id,
           episodeId: created.id,
           pageNumber: p.pageNumber,
@@ -97,7 +99,7 @@ export class EpisodesService {
         pages: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        rendererModel: renderer.imageModel,
+        rendererModel: rendererModel,
       };
       this.episodes.set(id, episode);
       for (let i = 1; i <= 10; i++) {
@@ -290,7 +292,7 @@ export class EpisodesService {
         id: e.id,
         seedInput: e.seedInput as any,
         outline: (e.outline as any) ?? undefined,
-        pages: e.pages.map((p) => ({
+        pages: e.pages.map((p: any) => ({
           id: p.id,
           episodeId: p.episodeId,
           pageNumber: p.pageNumber,
@@ -406,7 +408,7 @@ export class EpisodesService {
       // Generate sample dialogues for each panel
       for (let p = 1; p <= panelCount; p++) {
         if (i === 1) {
-          if (p === 1) dialogues.push({ panel_number: p, character: null, text: `The city never sleeps...`, type: 'narration' as const });
+          if (p === 1) dialogues.push({ panel_number: p, character: undefined, text: `The city never sleeps...`, type: 'narration' as const });
           else if (p === 2) dialogues.push({ panel_number: p, character: seed.cast[0]?.name || 'Aoi', text: `Something's not right here.`, type: 'dialogue' as const });
           else dialogues.push({ panel_number: p, character: seed.cast[1]?.name || 'Kenji', text: `We should be careful.`, type: 'dialogue' as const });
         } else {

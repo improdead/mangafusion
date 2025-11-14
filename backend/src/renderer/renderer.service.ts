@@ -18,6 +18,7 @@ export type RenderRequest = {
     dialogueTextOverride?: string; // user-provided dialogue lines to render
 };
 
+@Injectable()
 export class RendererService {
     private readonly geminiApiKey = process.env.GEMINI_API_KEY;
     private readonly openaiApiKey = process.env.OPENAI_API_KEY;
@@ -70,7 +71,7 @@ export class RendererService {
 
             console.log('OpenAI call completed, processing response...');
 
-            const imageUrl = response.data[0]?.url;
+            const imageUrl = response.data?.[0]?.url;
             if (!imageUrl) {
                 throw new Error('No image URL returned from OpenAI');
             }
@@ -371,7 +372,7 @@ export class RendererService {
                 style: 'natural',
             });
 
-            const imageUrl = response.data[0]?.url;
+            const imageUrl = response.data?.[0]?.url;
             if (!imageUrl) {
                 const url = `https://placehold.co/768x1024/222/EEE?text=${encodeURIComponent(request.name)}`;
                 return { imageUrl: url };

@@ -38,7 +38,7 @@ export class PagesController {
       return { audioUrl: result.audioUrl, dialogues };
     } catch (error) {
       console.error('TTS generation failed:', error);
-      return { error: error.message || 'TTS generation failed' };
+      return { error: error instanceof Error ? error.message : 'TTS generation failed' };
     }
   }
 
