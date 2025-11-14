@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   typescript: {
     // We rely on runtime checks; allow migrating backend TS without blocking builds
     ignoreBuildErrors: true,
