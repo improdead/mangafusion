@@ -8,7 +8,7 @@ export class PlannerService {
   private readonly openaiApiKey = process.env.OPENAI_API_KEY;
   private readonly provider = process.env.PLANNER_PROVIDER || 'openai';
   private readonly geminiModel = process.env.PLANNER_MODEL || 'gemini-2.5-flash';
-  private readonly openaiModel = process.env.OPENAI_PLANNER_MODEL || 'gpt-4o';
+  private readonly openaiModel = process.env.OPENAI_PLANNER_MODEL || 'gpt-5-mini-2025-08-07';
 
   private get geminiClient() {
     if (!this.geminiApiKey) throw new Error('GEMINI_API_KEY not set');
