@@ -355,10 +355,10 @@ export default function Home() {
                   <polyline points="10,9 9,9 8,9"/>
                 </svg>
               ),
-              badge: 'Gemini 2.5',
+              badge: 'GPT-4o',
             }, {
               title: 'Visual Generation',
-              desc: 'Nano Banana creates stunning B&W manga artwork with perfect character consistency across all pages.',
+              desc: 'OpenAI DALL-E 3 creates stunning B&W manga artwork with perfect character consistency across all pages.',
               color: 'from-blue-500 to-cyan-500',
               icon: (
                 <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
@@ -367,7 +367,7 @@ export default function Home() {
                   <polyline points="21,15 16,10 5,21"/>
                 </svg>
               ),
-              badge: 'Flash Image',
+              badge: 'DALL-E 3',
             }, {
               title: 'AI Audiobook',
               desc: 'ElevenLabs Flash v2.5 brings your manga to life with natural voice narration and immersive reading experience.',

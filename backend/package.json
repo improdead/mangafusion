@@ -20,6 +20,7 @@
     "@supabase/supabase-js": "^2.39.0",
     "bullmq": "^5.13.1",
     "dotenv": "^16.4.5",
+    "openai": "^6.9.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1"
   },
