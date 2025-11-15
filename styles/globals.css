@@ -35,11 +35,14 @@
     @apply text-sm font-semibold text-gray-800 flex items-center gap-2 select-none;
   }
   .editor-grid {
+    background-color: #f8f9fa;
     background-image:
-      linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
-    background-size: 24px 24px, 24px 24px;
-    background-position: center center;
+      linear-gradient(rgba(139, 92, 246, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(139, 92, 246, 0.08) 1px, transparent 1px),
+      linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px);
+    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+    background-position: center center, center center, center center, center center;
   }
   .btn-primary {
     @apply bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-200 shadow-lg shadow-purple-500/20 hover:shadow-2xl hover:shadow-purple-600/25 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
@@ -71,5 +74,50 @@
   
   .progress-bar {
     @apply bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all duration-300;
+  }
+}
+
+@layer utilities {
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-fadeIn {
+    animation: fadeIn 0.2s ease-out forwards;
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
+  }
+
+  .animate-slideIn {
+    animation: slideIn 0.3s ease-out;
   }
 }
