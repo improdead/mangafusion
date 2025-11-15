@@ -58,11 +58,11 @@ export class RendererService {
             console.log(`Generating image for page ${request.pageNumber} with OpenAI ${this.config.openaiModel}`);
             console.log(`Prompt: ${prompt.slice(0, 200)}...`);
 
-            // Note: DALL-E 3 doesn't support image editing or reference images in the same way
-            // We'll generate based on text prompt only
+            // Note: gpt-image-1 supports up to 32k characters; DALL-E 3 has 4k limit
+            // We'll generate based on text prompt only (no image editing support)
             const response = await this.openaiClient.images.generate({
                 model: this.config.openaiModel,
-                prompt: prompt.slice(0, 4000), // DALL-E has a 4000 char limit
+                prompt: prompt.slice(0, 32000), // gpt-image-1 supports 32k chars; DALL-E 3 is 4k
                 n: 1,
                 size: '1024x1792', // Closest to 1024x1536 manga ratio
                 quality: 'hd',
@@ -375,7 +375,7 @@ export class RendererService {
         try {
             const response = await this.openaiClient.images.generate({
                 model: this.config.openaiModel,
-                prompt: prompt.slice(0, 4000),
+                prompt: prompt.slice(0, 32000), // gpt-image-1 supports 32k chars; DALL-E 3 is 4k
                 n: 1,
                 size: '1024x1792',
                 quality: 'standard',
