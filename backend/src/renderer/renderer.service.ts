@@ -52,14 +52,23 @@ export class RendererService {
             throw new Error('Renderer unavailable: OPENAI_API_KEY not set');
         }
 
-        const prompt = this.buildPrompt(request);
+        let prompt = this.buildPrompt(request);
+
+        // Enhance prompt with reference image analysis using GPT-4 Vision
+        if (request.characterAssets?.length || request.baseImageUrl || request.styleRefUrls?.length) {
+            try {
+                prompt = await this.enhancePromptWithReferenceImages(prompt, request);
+                console.log('Enhanced prompt with reference image analysis');
+            } catch (error) {
+                console.warn('Failed to analyze reference images, using basic prompt:', error);
+            }
+        }
 
         try {
             console.log(`Generating image for page ${request.pageNumber} with OpenAI ${this.config.openaiModel}`);
             console.log(`Prompt: ${prompt.slice(0, 200)}...`);
 
             // Note: gpt-image-1 supports up to 32k characters; DALL-E 3 has 4k limit
-            // We'll generate based on text prompt only (no image editing support)
             const response = await this.openaiClient.images.generate({
                 model: this.config.openaiModel,
                 prompt: prompt.slice(0, 32000), // gpt-image-1 supports 32k chars; DALL-E 3 is 4k
@@ -120,6 +129,166 @@ export class RendererService {
             console.log(`Using error fallback: ${fallbackUrl}`);
             return { imageUrl: fallbackUrl, seed };
         }
+    }
+
+    /**
+     * Enhance prompt with reference image analysis using GPT-4 Vision
+     * This allows OpenAI to "see" character references and create better consistency
+     */
+    private async enhancePromptWithReferenceImages(basePrompt: string, request: RenderRequest): Promise<string> {
+        const messages: any[] = [];
+        const imageDescriptions: string[] = [];
+
+        // Analyze character reference images
+        if (request.characterAssets?.length) {
+            let used: Set<string> | null = null;
+            if (request.outline.prompt) {
+                const matches = Array.from(request.outline.prompt.matchAll(/<([^>]+)>/g)).map(m => m[1]);
+                used = new Set(matches);
+            }
+
+            for (const character of request.characterAssets) {
+                if (used && !used.has(character.assetFilename)) continue;
+                if (!character.imageUrl) continue;
+
+                try {
+                    const response = await fetch(character.imageUrl);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+                    // Use GPT-4 Vision to analyze character appearance
+                    const visionResponse = await this.openaiClient.chat.completions.create({
+                        model: 'gpt-4o', // GPT-4 with vision
+                        messages: [
+                            {
+                                role: 'user',
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: `Analyze this manga character reference image. Provide a detailed description of their visual appearance including: hair style and color, eye color and shape, facial features, outfit/clothing, body type, distinctive marks or accessories, art style. Be extremely specific and detailed. Format as a concise paragraph.`
+                                    },
+                                    {
+                                        type: 'image_url',
+                                        image_url: {
+                                            url: `data:image/png;base64,${base64}`,
+                                            detail: 'high'
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        max_tokens: 500
+                    });
+
+                    const description = visionResponse.choices[0]?.message?.content || '';
+                    if (description) {
+                        imageDescriptions.push(`${character.name}: ${description}`);
+                        console.log(`Analyzed character ${character.name}: ${description.slice(0, 100)}...`);
+                    }
+                } catch (error) {
+                    console.warn(`Failed to analyze character ${character.name}:`, error);
+                }
+            }
+        }
+
+        // Analyze base image if editing
+        if (request.baseImageUrl) {
+            try {
+                const response = await fetch(request.baseImageUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+                const visionResponse = await this.openaiClient.chat.completions.create({
+                    model: 'gpt-4o',
+                    messages: [
+                        {
+                            role: 'user',
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `Analyze this manga page image. Describe the composition, panel layout, character poses, and visual style. Be specific about what should be preserved in an edited version. Format as a concise paragraph.`
+                                },
+                                {
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: `data:image/png;base64,${base64}`,
+                                        detail: 'high'
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens: 500
+                });
+
+                const description = visionResponse.choices[0]?.message?.content || '';
+                if (description) {
+                    imageDescriptions.push(`Base page composition: ${description}`);
+                }
+            } catch (error) {
+                console.warn('Failed to analyze base image:', error);
+            }
+        }
+
+        // Analyze style reference images
+        if (request.styleRefUrls?.length) {
+            for (const styleUrl of request.styleRefUrls.slice(0, 2)) { // Limit to 2 to avoid too many API calls
+                try {
+                    const response = await fetch(styleUrl);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+                    const visionResponse = await this.openaiClient.chat.completions.create({
+                        model: 'gpt-4o',
+                        messages: [
+                            {
+                                role: 'user',
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: `Analyze this manga/art style reference. Describe the line weight, shading technique, screentone usage, level of detail, artistic style, and visual aesthetics. Be specific. Format as a concise paragraph.`
+                                    },
+                                    {
+                                        type: 'image_url',
+                                        image_url: {
+                                            url: `data:image/png;base64,${base64}`,
+                                            detail: 'high'
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        max_tokens: 300
+                    });
+
+                    const description = visionResponse.choices[0]?.message?.content || '';
+                    if (description) {
+                        imageDescriptions.push(`Style reference: ${description}`);
+                    }
+                } catch (error) {
+                    console.warn('Failed to analyze style reference:', error);
+                }
+            }
+        }
+
+        // Enhance the base prompt with analyzed descriptions
+        if (imageDescriptions.length > 0) {
+            const enhancedPrompt = [
+                basePrompt,
+                '',
+                '=== REFERENCE IMAGE ANALYSIS ===',
+                'The following detailed descriptions are derived from analyzing reference images. Match these EXACTLY:',
+                '',
+                ...imageDescriptions,
+                '',
+                'CRITICAL: Maintain perfect visual consistency with the analyzed references above. Match hair, eyes, clothing, and all distinctive features precisely.',
+                '============================================',
+            ].join('\n');
+
+            return enhancedPrompt;
+        }
+
+        return basePrompt;
     }
 
     private async generatePageGemini(request: RenderRequest, seed: number): Promise<{ imageUrl: string; seed: number }> {
