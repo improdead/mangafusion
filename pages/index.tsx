@@ -21,6 +21,7 @@ export default function Home() {
   const [heroTitle, setHeroTitle] = useState('Create Your AI Manga');
   const [heroSubtitle, setHeroSubtitle] = useState('Transform your ideas into stunning manga pages with AI-powered storytelling and image generation');
   const eventSourceRef = useRef<EventSource | null>(null);
+  const planningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then((r) => (r.ok ? r.json() : Promise.reject())).then(() => setApiUp(true)).catch(() => setApiUp(false));
@@ -48,12 +49,16 @@ export default function Home() {
       });
   }, []);
 
-  // Cleanup EventSource on unmount
+  // Cleanup EventSource and timeout on unmount
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
+      }
+      if (planningTimeoutRef.current) {
+        clearTimeout(planningTimeoutRef.current);
+        planningTimeoutRef.current = null;
       }
     };
   }, []);
@@ -88,9 +93,13 @@ export default function Home() {
       }
       const episodeId = planJson.episodeId as string;
 
-      // Close any existing EventSource before creating a new one
+      // Close any existing EventSource and timeout before creating new ones
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
+      }
+      if (planningTimeoutRef.current) {
+        clearTimeout(planningTimeoutRef.current);
+        planningTimeoutRef.current = null;
       }
 
       // Listen for planning status updates
@@ -108,6 +117,10 @@ export default function Home() {
               eventSourceRef.current.close();
               eventSourceRef.current = null;
             }
+            if (planningTimeoutRef.current) {
+              clearTimeout(planningTimeoutRef.current);
+              planningTimeoutRef.current = null;
+            }
             // Continue with the rest of the process
             continueAfterPlanning(episodeId);
           }
@@ -123,13 +136,14 @@ export default function Home() {
         }
       };
 
-      // Fallback in case SSE doesn't work
-      setTimeout(() => {
+      // Fallback in case SSE doesn't work (only runs if planning hasn't completed)
+      planningTimeoutRef.current = setTimeout(() => {
         if (eventSourceRef.current) {
           eventSourceRef.current.close();
           eventSourceRef.current = null;
         }
         continueAfterPlanning(episodeId);
+        planningTimeoutRef.current = null;
       }, 10000);
 
     } catch (err: any) {

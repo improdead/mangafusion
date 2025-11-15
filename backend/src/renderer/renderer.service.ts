@@ -55,7 +55,7 @@ export class RendererService {
         const prompt = this.buildPrompt(request);
 
         try {
-            console.log(`Generating image for page ${request.pageNumber} with OpenAI DALL-E 3`);
+            console.log(`Generating image for page ${request.pageNumber} with OpenAI ${this.config.openaiModel}`);
             console.log(`Prompt: ${prompt.slice(0, 200)}...`);
 
             // Note: DALL-E 3 doesn't support image editing or reference images in the same way
@@ -67,18 +67,27 @@ export class RendererService {
                 size: '1024x1792', // Closest to 1024x1536 manga ratio
                 quality: 'hd',
                 style: 'natural', // More suitable for manga than 'vivid'
+                response_format: 'b64_json', // Request base64 for consistent handling
             });
 
             console.log('OpenAI call completed, processing response...');
 
-            const imageUrl = response.data?.[0]?.url;
-            if (!imageUrl) {
-                throw new Error('No image URL returned from OpenAI');
+            let imageBuffer: Buffer;
+            const imageData = response.data?.[0];
+
+            if (!imageData) {
+                throw new Error('No image data returned from OpenAI');
             }
 
-            // Download the image from OpenAI's temporary URL
-            const imageResponse = await fetch(imageUrl);
-            const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            // Handle both b64_json and url response formats
+            if (imageData.b64_json) {
+                imageBuffer = Buffer.from(imageData.b64_json, 'base64');
+            } else if (imageData.url) {
+                const imageResponse = await fetch(imageData.url);
+                imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            } else {
+                throw new Error('OpenAI response missing both b64_json and url fields');
+            }
 
             console.log(`Generated image buffer: ${imageBuffer.length} bytes`);
 
@@ -91,8 +100,9 @@ export class RendererService {
                 finalImageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
                 console.log(`Image uploaded to storage: ${finalImageUrl}`);
             } else {
-                console.warn('Storage not configured, using OpenAI temporary URL');
-                finalImageUrl = imageUrl;
+                console.warn('Storage not configured, using fallback placeholder');
+                const shortBeat = encodeURIComponent(request.outline.beat.slice(0, 40));
+                finalImageUrl = `https://placehold.co/1024x1536/FFA500/000000?text=STORAGE+DISABLED%0APAGE+${padded}%0A${shortBeat}`;
             }
 
             console.log(`Successfully generated page ${request.pageNumber} with OpenAI`);
@@ -370,24 +380,39 @@ export class RendererService {
                 size: '1024x1792',
                 quality: 'standard',
                 style: 'natural',
+                response_format: 'b64_json', // Request base64 for consistent handling
             });
 
-            const imageUrl = response.data?.[0]?.url;
-            if (!imageUrl) {
+            let imageBuffer: Buffer;
+            const imageData = response.data?.[0];
+
+            if (!imageData) {
                 const url = `https://placehold.co/768x1024/222/EEE?text=${encodeURIComponent(request.name)}`;
                 return { imageUrl: url };
             }
 
-            // Download and upload to storage
-            const imageResponse = await fetch(imageUrl);
-            const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            // Handle both b64_json and url response formats
+            if (imageData.b64_json) {
+                imageBuffer = Buffer.from(imageData.b64_json, 'base64');
+            } else if (imageData.url) {
+                const imageResponse = await fetch(imageData.url);
+                imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            } else {
+                const url = `https://placehold.co/768x1024/222/EEE?text=${encodeURIComponent(request.name)}`;
+                return { imageUrl: url };
+            }
 
-            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/characters/${request.assetFilename}`;
+            // Sanitize assetFilename to prevent path traversal
+            const sanitizedFilename = request.assetFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/characters/${sanitizedFilename}`;
+
             let finalImageUrl: string;
             if (this.storage.enabled) {
                 finalImageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
             } else {
-                finalImageUrl = imageUrl;
+                // Fallback placeholder when storage is disabled
+                const url = `https://placehold.co/768x1024/222/EEE?text=${encodeURIComponent(request.name)}`;
+                return { imageUrl: url };
             }
             return { imageUrl: finalImageUrl };
         } catch (e) {
@@ -429,7 +454,10 @@ export class RendererService {
                 return { imageUrl: url };
             }
 
-            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/characters/${request.assetFilename}`;
+            // Sanitize assetFilename to prevent path traversal
+            const sanitizedFilename = request.assetFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/characters/${sanitizedFilename}`;
+
             let imageUrl: string;
             if (this.storage.enabled) {
                 imageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
