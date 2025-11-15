@@ -92,8 +92,8 @@ Character consistency means maintaining the same visual identity for a character
    - Stored in Supabase: `episodes/{episodeTitle}/characters/{assetFilename}`
 
 3. **Page Generation with Character References:**
-   - **Gemini:** Fetches character reference images, converts to base64, attaches as `inlineData` to the generation request
-   - **OpenAI:** Cannot attach images; only mentions character URLs in text prompt (ineffective)
+   - **Gemini:** Fetches character reference images, converts to base64, attaches as `inlineData` to the generation request ✅ IMPLEMENTED
+   - **OpenAI:** Reference image support EXISTS in API but NOT YET IMPLEMENTED in codebase (currently only sends text prompts)
    - Prompt includes: `"Character consistency: Use the attached reference images to keep faces/outfits consistent across pages."`
 
 **Code Evidence:**
@@ -116,7 +116,7 @@ if (request.characterAssets?.length) {
 
 ### Limitations of Current Approach
 
-1. **OpenAI Has No Image Conditioning:** `gpt-image-1` and `dall-e-3` APIs don't support reference images as input - only text prompts
+1. **OpenAI Reference Images Not Implemented:** While newer OpenAI models (`gpt-image-1`) DO support reference images, the current codebase only sends text prompts (not using this capability yet)
 2. **Gemini Reference Images Are Unreliable:** While Gemini accepts reference images, there's no guarantee it will maintain character consistency
 3. **Single Reference Image:** Only one view per character (typically 3/4 view or full body) limits angle coverage
 4. **No Face Embedding:** System doesn't extract or preserve face embeddings for reuse
@@ -795,38 +795,44 @@ Short-term solution, prototyping, demos with moderate consistency needs
 - **GPT-Image-1:** `gpt-image-1` - 1024x1792, 32k character prompt limit
 
 **Character Consistency Features:**
-- **❌ Reference Images:** Not supported (text-only prompts)
+- **⚠️ Reference Images:** Supported by API (GPT-Image-1) but NOT YET IMPLEMENTED in codebase
 - **❌ LoRA:** Not supported
 - **❌ ControlNet:** Not supported
 - **❌ Fine-tuning:** Not available
 - **❌ Embeddings:** Not supported
-- **✅ Detailed Prompts:** Supports long prompts (especially GPT-Image-1)
+- **✅ Detailed Prompts:** Supports long prompts (especially GPT-Image-1 with 32k limit)
 
 **How It Handles Character References:**
-- **Cannot handle references at all**
-- Relies purely on text descriptions
-- No image conditioning capabilities in API
+- **API supports reference images** (similar to Gemini's approach)
+- **Current implementation uses text-only** (not leveraging reference image capability yet)
 
-**Character Consistency Strategy:**
+**Character Consistency Strategy (Current - Text-Only):**
 1. Use extremely detailed text prompts
 2. Include all character features in every generation
 3. Hope for consistent interpretation (unreliable)
 4. Regenerate multiple times, select closest match
 
-**Observed Performance:**
+**Observed Performance (Current Text-Only Implementation):**
 - **Face Similarity:** 30-50% consistency (very weak)
 - **Outfit Similarity:** 40-60% consistency
 - **Style Matching:** 70-80% (good at style consistency)
 - **High Variance:** Characters often look completely different
 
+**Potential Performance (WITH Reference Images - Not Yet Implemented):**
+- **Face Similarity:** 60-70% consistency (similar to Gemini)
+- **Outfit Similarity:** 65-75% consistency
+- **Style Matching:** 75-85%
+- **Note:** Actual performance TBD pending implementation
+
 **Pros:**
 - **High Quality:** DALL-E 3 produces beautiful, polished images
 - **Long Prompts:** GPT-Image-1's 32k limit allows exhaustive descriptions
+- **Reference Image Support:** API supports it (just needs implementation)
 - **Safety:** Strong content filters, safe for production
 - **Reliability:** Stable API, good uptime
 
 **Cons:**
-- **No Image Input:** Fatal flaw for character consistency
+- **Reference Images Not Used:** Current codebase doesn't leverage this capability
 - **Expensive:** $0.04-0.12 per image (depending on model/size)
 - **Slow:** 10-30 seconds per generation
 - **Limited Control:** No advanced features
@@ -1275,18 +1281,20 @@ Teams willing to invest in subscription, prioritizing visual quality, okay with 
 
 **Implement the Hybrid Multi-Tier Approach** with the following prioritization:
 
-### Phase 1: Enhanced Gemini (Immediate - Week 1-2)
+### Phase 1: Enhanced Reference Images (Immediate - Week 1-2)
 
 **Goal:** Improve current system from ~60% to ~75% consistency with minimal effort.
 
 **Tasks:**
-1. Generate 4-view character references (front, 3/4, side, closeup)
-2. Attach all views to Gemini requests
-3. Enhance planner prompts with 10+ character features
-4. Add character reference sheet generation option
-5. Implement variant generation (3 options, user selects best)
+1. **Implement OpenAI reference image support** (currently missing!) ⭐ QUICK WIN
+2. Generate 4-view character references (front, 3/4, side, closeup)
+3. Attach all views to both Gemini AND OpenAI requests
+4. Enhance planner prompts with 10+ character features
+5. Add character reference sheet generation option
+6. Implement variant generation (3 options, user selects best)
 
 **Code Changes:**
+- `renderer.service.ts`: **Add reference image support to OpenAI `generatePageOpenAI()` function** (similar to Gemini implementation lines 162-183)
 - `planner.service.ts`: Add detailed character description generation
 - `renderer.service.ts`: Load and attach multiple character views
 - `episodes.service.ts`: Generate multi-view references after planning
