@@ -10,6 +10,7 @@ export type EventPayload =
   | { type: 'page_done'; episodeId: string; page: number; imageUrl: string; seed: number; version: number }
   | { type: 'page_failed'; episodeId: string; page: number; error: string };
 
+@Injectable()
 export class EventsService {
   private streams = new Map<string, Subject<EventPayload>>();
 

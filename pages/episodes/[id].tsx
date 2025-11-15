@@ -39,6 +39,7 @@ export default function EpisodeReader() {
   const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [ttsUsage, setTtsUsage] = useState<any>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const sorted = useMemo(() => {
     const arr: PageState[] = [];
@@ -97,7 +98,14 @@ export default function EpisodeReader() {
       })
       .catch(console.error);
 
+    // Close any existing EventSource before creating a new one
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
     const es = new EventSource(`${API_BASE}/episodes/${id}/stream`);
+    eventSourceRef.current = es;
+
     es.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
@@ -114,13 +122,24 @@ export default function EpisodeReader() {
           setIsGenerating(false);
         }
       } catch (e) {
-        // ignore
+        // ignore parsing errors
       }
     };
+
     es.onerror = () => {
-      // you might want to handle reconnection in real app
+      // Close on error to prevent reconnection attempts
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
     };
-    return () => es.close();
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
   }, [id]);
 
   // Check if generation is complete

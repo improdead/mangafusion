@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+@Injectable()
 export class StorageService {
     private supabase: SupabaseClient | null = null;
     private adminSupabase: SupabaseClient | null = null;

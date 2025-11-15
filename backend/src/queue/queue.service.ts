@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue, JobsOptions } from 'bullmq';
 
+@Injectable()
 export class QueueService {
   private readonly logger = new Logger(QueueService.name);
   private generateQueue?: Queue;

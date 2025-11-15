@@ -7,6 +7,7 @@ interface TTSRequest {
   model_id?: string;
 }
 
+@Injectable()
 export class TTSService {
   private readonly apiKey = process.env.ELEVENLABS_API_KEY;
   private readonly baseUrl = 'https://api.elevenlabs.io/v1';
@@ -60,7 +61,7 @@ export class TTSService {
       return { audioUrl };
     } catch (error) {
       console.error('TTS generation failed:', error);
-      throw new Error(`Failed to generate speech: ${error.message}`);
+      throw new Error(`Failed to generate speech: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -133,7 +134,7 @@ export class TTSService {
       return data.voices || [];
     } catch (error) {
       console.error('Failed to fetch voices:', error);
-      throw new Error(`Failed to fetch voices: ${error.message}`);
+      throw new Error(`Failed to fetch voices: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -157,7 +158,7 @@ export class TTSService {
       return data || [];
     } catch (error) {
       console.error('Failed to fetch models:', error);
-      throw new Error(`Failed to fetch models: ${error.message}`);
+      throw new Error(`Failed to fetch models: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -186,7 +187,7 @@ export class TTSService {
       };
     } catch (error) {
       console.error('Failed to fetch usage:', error);
-      throw new Error(`Failed to fetch usage: ${error.message}`);
+      throw new Error(`Failed to fetch usage: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

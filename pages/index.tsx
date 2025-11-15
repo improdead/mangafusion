@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
@@ -20,6 +20,8 @@ export default function Home() {
   const [planningStatus, setPlanningStatus] = useState<string>('');
   const [heroTitle, setHeroTitle] = useState('Create Your AI Manga');
   const [heroSubtitle, setHeroSubtitle] = useState('Transform your ideas into stunning manga pages with AI-powered storytelling and image generation');
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const planningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then((r) => (r.ok ? r.json() : Promise.reject())).then(() => setApiUp(true)).catch(() => setApiUp(false));
@@ -45,6 +47,20 @@ export default function Home() {
       .catch(error => {
         console.log('Could not load words.md, using default text');
       });
+  }, []);
+
+  // Cleanup EventSource and timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (planningTimeoutRef.current) {
+        clearTimeout(planningTimeoutRef.current);
+        planningTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   async function onSubmit(e: React.FormEvent) {
@@ -77,8 +93,19 @@ export default function Home() {
       }
       const episodeId = planJson.episodeId as string;
 
+      // Close any existing EventSource and timeout before creating new ones
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+      if (planningTimeoutRef.current) {
+        clearTimeout(planningTimeoutRef.current);
+        planningTimeoutRef.current = null;
+      }
+
       // Listen for planning status updates
       const eventSource = new EventSource(`${API_BASE}/episodes/${episodeId}/stream`);
+      eventSourceRef.current = eventSource;
+
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -86,7 +113,14 @@ export default function Home() {
             setPlanningStatus(data.message || 'Planning in progress...');
           } else if (data.type === 'planning_complete') {
             setPlanningStatus(data.message || 'Planning complete!');
-            eventSource.close();
+            if (eventSourceRef.current) {
+              eventSourceRef.current.close();
+              eventSourceRef.current = null;
+            }
+            if (planningTimeoutRef.current) {
+              clearTimeout(planningTimeoutRef.current);
+              planningTimeoutRef.current = null;
+            }
             // Continue with the rest of the process
             continueAfterPlanning(episodeId);
           }
@@ -95,10 +129,21 @@ export default function Home() {
         }
       };
 
-      // Fallback in case SSE doesn't work
-      setTimeout(() => {
-        eventSource.close();
+      eventSource.onerror = () => {
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+      };
+
+      // Fallback in case SSE doesn't work (only runs if planning hasn't completed)
+      planningTimeoutRef.current = setTimeout(() => {
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
         continueAfterPlanning(episodeId);
+        planningTimeoutRef.current = null;
       }, 10000);
 
     } catch (err: any) {
@@ -355,10 +400,10 @@ export default function Home() {
                   <polyline points="10,9 9,9 8,9"/>
                 </svg>
               ),
-              badge: 'Gemini 2.5',
+              badge: 'GPT-5 Mini',
             }, {
               title: 'Visual Generation',
-              desc: 'Nano Banana creates stunning B&W manga artwork with perfect character consistency across all pages.',
+              desc: 'OpenAI GPT-Image-1 creates stunning B&W manga artwork with perfect character consistency across all pages.',
               color: 'from-blue-500 to-cyan-500',
               icon: (
                 <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
@@ -367,7 +412,7 @@ export default function Home() {
                   <polyline points="21,15 16,10 5,21"/>
                 </svg>
               ),
-              badge: 'Flash Image',
+              badge: 'GPT-Image-1',
             }, {
               title: 'AI Audiobook',
               desc: 'ElevenLabs Flash v2.5 brings your manga to life with natural voice narration and immersive reading experience.',

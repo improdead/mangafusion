@@ -3,4 +3,7 @@ node_modules
 backend/dist
 web/.next
 web/out
+.next
+test-results
+playwright-report
 

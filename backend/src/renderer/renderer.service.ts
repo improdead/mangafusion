@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { getRendererConfig } from './config';
 import { StorageService } from '../storage/storage.service';
 import { Character, PlannerOutlinePage } from '../episodes/types';
@@ -17,39 +18,131 @@ export type RenderRequest = {
     dialogueTextOverride?: string; // user-provided dialogue lines to render
 };
 
+@Injectable()
 export class RendererService {
-    private readonly apiKey = process.env.GEMINI_API_KEY;
+    private readonly geminiApiKey = process.env.GEMINI_API_KEY;
+    private readonly openaiApiKey = process.env.OPENAI_API_KEY;
     private readonly config = getRendererConfig();
 
     constructor(private readonly storage: StorageService) {}
 
-    private get client() {
-        if (!this.apiKey) throw new Error('GEMINI_API_KEY not set');
-        return new GoogleGenerativeAI(this.apiKey);
+    private get geminiClient() {
+        if (!this.geminiApiKey) throw new Error('GEMINI_API_KEY not set');
+        return new GoogleGenerativeAI(this.geminiApiKey);
+    }
+
+    private get openaiClient() {
+        if (!this.openaiApiKey) throw new Error('OPENAI_API_KEY not set');
+        return new OpenAI({ apiKey: this.openaiApiKey });
     }
 
     async generatePage(request: RenderRequest): Promise<{ imageUrl: string; seed: number }> {
-        if (!this.apiKey) {
-            throw new Error('Renderer unavailable: GEMINI_API_KEY not set');
+        const seed = request.seed || Math.floor(Math.random() * 1_000_000);
+
+        // Route to appropriate provider
+        if (this.config.provider === 'openai') {
+            return this.generatePageOpenAI(request, seed);
+        } else {
+            return this.generatePageGemini(request, seed);
+        }
+    }
+
+    private async generatePageOpenAI(request: RenderRequest, seed: number): Promise<{ imageUrl: string; seed: number }> {
+        if (!this.openaiApiKey) {
+            throw new Error('Renderer unavailable: OPENAI_API_KEY not set');
         }
 
-        const seed = request.seed || Math.floor(Math.random() * 1_000_000);
         const prompt = this.buildPrompt(request);
 
         try {
-            console.log(`Generating image for page ${request.pageNumber} with model ${this.config.imageModel}`);
+            console.log(`Generating image for page ${request.pageNumber} with OpenAI ${this.config.openaiModel}`);
             console.log(`Prompt: ${prompt.slice(0, 200)}...`);
-            
+
+            // Note: gpt-image-1 supports up to 32k characters; DALL-E 3 has 4k limit
+            // We'll generate based on text prompt only (no image editing support)
+            const response = await this.openaiClient.images.generate({
+                model: this.config.openaiModel,
+                prompt: prompt.slice(0, 32000), // gpt-image-1 supports 32k chars; DALL-E 3 is 4k
+                n: 1,
+                size: '1024x1792', // Closest to 1024x1536 manga ratio
+                quality: 'hd',
+                style: 'natural', // More suitable for manga than 'vivid'
+                response_format: 'b64_json', // Request base64 for consistent handling
+            });
+
+            console.log('OpenAI call completed, processing response...');
+
+            let imageBuffer: Buffer;
+            const imageData = response.data?.[0];
+
+            if (!imageData) {
+                throw new Error('No image data returned from OpenAI');
+            }
+
+            // Handle both b64_json and url response formats
+            if (imageData.b64_json) {
+                imageBuffer = Buffer.from(imageData.b64_json, 'base64');
+            } else if (imageData.url) {
+                const imageResponse = await fetch(imageData.url);
+                imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            } else {
+                throw new Error('OpenAI response missing both b64_json and url fields');
+            }
+
+            console.log(`Generated image buffer: ${imageBuffer.length} bytes`);
+
+            // Upload to storage
+            let finalImageUrl: string;
+            const padded = String(request.pageNumber).padStart(2, '0');
+            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/page_${padded}_${seed}.png`;
+
+            if (this.storage.enabled) {
+                finalImageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
+                console.log(`Image uploaded to storage: ${finalImageUrl}`);
+            } else {
+                console.warn('Storage not configured, using fallback placeholder');
+                const shortBeat = encodeURIComponent(request.outline.beat.slice(0, 40));
+                finalImageUrl = `https://placehold.co/1024x1536/FFA500/000000?text=STORAGE+DISABLED%0APAGE+${padded}%0A${shortBeat}`;
+            }
+
+            console.log(`Successfully generated page ${request.pageNumber} with OpenAI`);
+            return { imageUrl: finalImageUrl, seed };
+
+        } catch (error) {
+            console.error('OpenAI image generation failed:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+
+            // Fallback placeholder
+            const padded = String(request.pageNumber).padStart(2, '0');
+            const shortBeat = encodeURIComponent(request.outline.beat.slice(0, 40));
+            const fallbackUrl = `https://placehold.co/1024x1536/FF6B6B/FFFFFF?text=OPENAI+ERROR%0APAGE+${padded}%0A${shortBeat}`;
+
+            console.log(`Using error fallback: ${fallbackUrl}`);
+            return { imageUrl: fallbackUrl, seed };
+        }
+    }
+
+    private async generatePageGemini(request: RenderRequest, seed: number): Promise<{ imageUrl: string; seed: number }> {
+        if (!this.geminiApiKey) {
+            throw new Error('Renderer unavailable: GEMINI_API_KEY not set');
+        }
+
+        const prompt = this.buildPrompt(request);
+
+        try {
+            console.log(`Generating image for page ${request.pageNumber} with Gemini ${this.config.geminiModel}`);
+            console.log(`Prompt: ${prompt.slice(0, 200)}...`);
+
             // Initialize the Gemini image model
-            const model = this.client.getGenerativeModel({ 
-                model: this.config.imageModel,
+            const model = this.geminiClient.getGenerativeModel({
+                model: this.config.geminiModel,
                 generationConfig: {
                     temperature: 0.7,
                     topK: 40,
                     topP: 0.95,
                 }
             });
-            
+
             // Generate image with Gemini
             console.log('Calling Gemini image generation...');
             const parts: any[] = [{ text: prompt }];
@@ -258,7 +351,78 @@ export class RendererService {
     }
 
     async generateCharacter(request: { episodeTitle: string; name: string; description: string; assetFilename: string; visualStyle: string }): Promise<{ imageUrl: string }> {
-        if (!this.apiKey) {
+        if (this.config.provider === 'openai') {
+            return this.generateCharacterOpenAI(request);
+        } else {
+            return this.generateCharacterGemini(request);
+        }
+    }
+
+    private async generateCharacterOpenAI(request: { episodeTitle: string; name: string; description: string; assetFilename: string; visualStyle: string }): Promise<{ imageUrl: string }> {
+        if (!this.openaiApiKey) {
+            throw new Error('Renderer unavailable: OPENAI_API_KEY not set');
+        }
+
+        const prompt = [
+            `Create a clean character reference image for a manga.`,
+            `Character: ${request.name}`,
+            `Design notes: ${request.description}`,
+            `Art style: ${request.visualStyle}`,
+            'Black-and-white manga line art with screentones, full-body or 3/4 view, neutral pose, no text.',
+            'Transparent or white background. High-contrast, crisp lines. Centered composition.',
+        ].join('\n');
+
+        try {
+            const response = await this.openaiClient.images.generate({
+                model: this.config.openaiModel,
+                prompt: prompt.slice(0, 32000), // gpt-image-1 supports 32k chars; DALL-E 3 is 4k
+                n: 1,
+                size: '1024x1792',
+                quality: 'standard',
+                style: 'natural',
+                response_format: 'b64_json', // Request base64 for consistent handling
+            });
+
+            let imageBuffer: Buffer;
+            const imageData = response.data?.[0];
+
+            if (!imageData) {
+                const url = `https://placehold.co/768x1024/222/EEE?text=${encodeURIComponent(request.name)}`;
+                return { imageUrl: url };
+            }
+
+            // Handle both b64_json and url response formats
+            if (imageData.b64_json) {
+                imageBuffer = Buffer.from(imageData.b64_json, 'base64');
+            } else if (imageData.url) {
+                const imageResponse = await fetch(imageData.url);
+                imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            } else {
+                const url = `https://placehold.co/768x1024/222/EEE?text=${encodeURIComponent(request.name)}`;
+                return { imageUrl: url };
+            }
+
+            // Sanitize assetFilename to prevent path traversal
+            const sanitizedFilename = request.assetFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/characters/${sanitizedFilename}`;
+
+            let finalImageUrl: string;
+            if (this.storage.enabled) {
+                finalImageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
+            } else {
+                // Fallback placeholder when storage is disabled
+                const url = `https://placehold.co/768x1024/222/EEE?text=${encodeURIComponent(request.name)}`;
+                return { imageUrl: url };
+            }
+            return { imageUrl: finalImageUrl };
+        } catch (e) {
+            const url = `https://placehold.co/768x1024/333/EEE?text=${encodeURIComponent(request.name)}`;
+            return { imageUrl: url };
+        }
+    }
+
+    private async generateCharacterGemini(request: { episodeTitle: string; name: string; description: string; assetFilename: string; visualStyle: string }): Promise<{ imageUrl: string }> {
+        if (!this.geminiApiKey) {
             throw new Error('Renderer unavailable: GEMINI_API_KEY not set');
         }
 
@@ -271,7 +435,7 @@ export class RendererService {
             'Transparent or white background. High-contrast, crisp lines. Centered composition.',
         ].join('\n');
 
-        const model = this.client.getGenerativeModel({ model: this.config.imageModel });
+        const model = this.geminiClient.getGenerativeModel({ model: this.config.geminiModel });
         try {
             const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
             const candidate = result.response.candidates?.[0];
@@ -290,7 +454,10 @@ export class RendererService {
                 return { imageUrl: url };
             }
 
-            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/characters/${request.assetFilename}`;
+            // Sanitize assetFilename to prevent path traversal
+            const sanitizedFilename = request.assetFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `episodes/${request.episodeTitle.replace(/[^a-zA-Z0-9]/g, '_')}/characters/${sanitizedFilename}`;
+
             let imageUrl: string;
             if (this.storage.enabled) {
                 imageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
