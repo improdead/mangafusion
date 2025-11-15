@@ -275,6 +275,13 @@ export default function EpisodeReader() {
     }
   }, [readerMode, currentReaderPage]);
 
+  // Initialize loading state when image URL changes
+  useEffect(() => {
+    if (currentReaderPageData?.imageUrl) {
+      setImageLoadingStates(prev => ({ ...prev, [currentReaderPage]: true }));
+    }
+  }, [currentReaderPage, currentReaderPageData?.imageUrl]);
+
   // Reader Mode View
   if (readerMode) {
     return (
@@ -407,7 +414,6 @@ export default function EpisodeReader() {
                   className={`w-full h-auto max-h-[85vh] object-contain rounded-lg shadow-2xl transition-all duration-500 ${
                     imageLoadingStates[currentReaderPage] ? 'opacity-0' : 'opacity-100'
                   }`}
-                  onLoadStart={() => setImageLoadingStates(prev => ({ ...prev, [currentReaderPage]: true }))}
                   onLoad={() => setImageLoadingStates(prev => ({ ...prev, [currentReaderPage]: false }))}
                   onError={() => setImageLoadingStates(prev => ({ ...prev, [currentReaderPage]: false }))}
                 />

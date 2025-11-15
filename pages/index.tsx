@@ -89,11 +89,12 @@ export default function Home() {
       case 'visualVibe':
         if (!value.trim()) return 'Visual style reference helps generate better art';
         return undefined;
-      case 'castInput':
+      case 'castInput': {
         const characters = value.split('\n').filter(s => s.trim());
         if (characters.length === 0) return 'At least one character is required';
         if (characters.length > 10) return 'Maximum 10 characters allowed';
         return undefined;
+      }
       default:
         return undefined;
     }

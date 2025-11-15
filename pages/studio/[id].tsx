@@ -165,13 +165,14 @@ export default function Studio() {
           if (e.key === 'ArrowRight') dx = step;
           if (e.key === 'ArrowUp') dy = -step;
           if (e.key === 'ArrowDown') dy = step;
+          addToHistory();
           onDrag(selected.overlayId, dx, dy);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selected, undo, redo]);
+  }, [selected, undo, redo, removeSelected, addToHistory, onDrag]);
 
   const addOverlay = (type: Overlay['type'], init?: Partial<Overlay>) => {
     if (!currentPage) return;
@@ -251,14 +252,14 @@ export default function Studio() {
     }
   };
 
-  const removeSelected = () => {
+  const removeSelected = useCallback(() => {
     if (!currentPage || !selected) return;
     addToHistory();
     const list = currentOverlays.filter(o => o.id !== selected.overlayId);
     setOverlays((prev)=> ({ ...prev, [currentPage.id]: list }));
     saveOverlays(currentPage.id, list);
     setSelected(null);
-  };
+  }, [currentPage, selected, currentOverlays, addToHistory, saveOverlays]);
 
   const toggleOverlayVisibility = (overlayId: string) => {
     if (!currentPage) return;
@@ -279,7 +280,7 @@ export default function Studio() {
     setSelected({ pageId: currentPage.id, overlayId: newOverlay.id });
   };
 
-  const onDrag = (id: string, dx: number, dy: number) => {
+  const onDrag = useCallback((id: string, dx: number, dy: number) => {
     if (!currentPage) return;
     const list = currentOverlays.map(o => {
       if (o.id === id) {
@@ -291,7 +292,7 @@ export default function Studio() {
       return o;
     });
     setOverlays((prev)=> ({ ...prev, [currentPage.id]: list }));
-  };
+  }, [currentOverlays, currentPage]);
 
   const onResize = (id: string, dw: number, dh: number) => {
     if (!currentPage) return;
@@ -308,12 +309,11 @@ export default function Studio() {
   };
 
   const onPointerResize = (overlayId: string, corner: 'br'|'tr'|'bl'|'tl') => {
-    let hasMovedRef = false;
     return {
       onPointerDown: (e: React.PointerEvent) => {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        addToHistory();
         setIsDragging(true);
-        hasMovedRef = false;
         const overlay = currentOverlays.find(o => o.id === overlayId);
         if (overlay) setDragInfo({ x: overlay.x, y: overlay.y, w: overlay.w, h: overlay.h });
       },
@@ -321,10 +321,6 @@ export default function Studio() {
         const dx = (e as any).movementX || 0;
         const dy = (e as any).movementY || 0;
         if (!currentPage) return;
-        if (!hasMovedRef && (dx !== 0 || dy !== 0)) {
-          addToHistory();
-          hasMovedRef = true;
-        }
         const list = currentOverlays.map(o => {
           if (o.id !== overlayId) return o;
           let x = o.x, y = o.y, w = o.w, h = o.h;
@@ -365,12 +361,11 @@ export default function Studio() {
   }, [currentOverlays, currentPage, saveOverlays]);
 
   const onPointerDrag = (overlayId: string) => {
-    let hasMovedRef = false;
     return {
       onPointerDown: (e: React.PointerEvent) => {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        addToHistory();
         setIsDragging(true);
-        hasMovedRef = false;
         const overlay = currentOverlays.find(o => o.id === overlayId);
         if (overlay) setDragInfo({ x: overlay.x, y: overlay.y, w: overlay.w, h: overlay.h });
       },
@@ -380,10 +375,6 @@ export default function Studio() {
         const dy = (e as any).movementY || 0;
         // If we have capture, treat as drag
         try {
-          if (!hasMovedRef && (dx !== 0 || dy !== 0)) {
-            addToHistory();
-            hasMovedRef = true;
-          }
           // movementX/Y are deltas since last event
           onDrag(overlayId, dx, dy);
         } catch {}
