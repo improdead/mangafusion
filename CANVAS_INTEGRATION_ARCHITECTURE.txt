@@ -1,0 +1,607 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║           MANGAFUSION CANVAS FEATURE - ARCHITECTURE OVERVIEW               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          CURRENT vs PROPOSED FLOW                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+CURRENT EPISODE WORKFLOW:
+═════════════════════════════════════════════════════════════════════════════
+
+    ┌─────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐
+    │ Planner │─────│ Renderer │─────│ Storage  │─────│ Display │
+    └─────────┘     └──────────┘     └──────────┘     └────┬────┘
+         ↓                                                   │
+    1. AI generates                                         │
+       outline &                                         ┌──▼──────┐
+       characters                                        │ Studio   │
+         ↓                                              │ Overlays │
+    2. Outline stored                                   └──────────┘
+       in DB                                                  │
+         ↓                                                    │
+    3. Pages queued                                      ┌────▼───────┐
+       for generation                                    │ Export PDF │
+         ↓                                              │ /CBZ       │
+    4. Each page                                        └────────────┘
+       generated via AI
+         ↓
+    5. Stored in Supabase
+
+
+PROPOSED WITH CANVAS REFINEMENT:
+═════════════════════════════════════════════════════════════════════════════
+
+    ┌─────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐
+    │ Planner │─────│ Renderer │─────│ Storage  │─────│ Display │
+    └─────────┘     └──────────┘     └──────────┘     └────┬────┘
+         ↓                                                   │
+    [PLANNING]                                         ┌─────▼──────┐
+         ↓                                              │ Studio     │
+         ▼                                              │ Overlays   │
+    [RENDERING]                                        └─────┬──────┘
+         ↓                                                   │
+         ▼                                              ┌────▼──────────┐
+    [STORAGE]                                           │ ← NEW →       │
+         ↓                                              │ CANVAS EDITOR │
+    [DISPLAY]                                          └────┬──────────┘
+                                                            │
+                                                       ┌────▼────────┐
+                                                       │ Composite   │
+                                                       │ (Canvas +   │
+                                                       │  Original)  │
+                                                       └────┬────────┘
+                                                            │
+                                                       ┌────▼───────┐
+                                                       │ Export PDF │
+                                                       │ /CBZ       │
+                                                       │ (includes  │
+                                                       │ canvas)    │
+                                                       └────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       CANVAS SERVICE ARCHITECTURE                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Frontend (/pages/studio/[id].tsx)
+│
+├─ Current Tabs:
+│  ├─ Overlays Editor (text bubbles, image overlays)
+│  ├─ AI Regenerate (edit prompt + style refs)
+│  └─ Dialogue Manager
+│
+└─ NEW Tab: Canvas Editor
+   │
+   ├─ Display Base Image (background layer)
+   │  └─ GET /episodes/:id to fetch current page imageUrl
+   │
+   ├─ Canvas Overlay (transparent, for drawing)
+   │  ├─ Pen, Pencil, Brush tools
+   │  ├─ Eraser tool
+   │  ├─ Color picker
+   │  ├─ Brush size & opacity controls
+   │  ├─ Undo/Redo stack
+   │  ├─ Layer toggle
+   │  └─ Auto-save every 5 seconds
+   │
+   ├─ Real-time Preview
+   │  └─ Show composite (original + drawing) as-you-draw
+   │
+   └─ Action Buttons
+      ├─ Save Canvas
+      │  └─ POST /pages/:id/canvas
+      │     ├─ Send: {strokes, canvasWidth, canvasHeight}
+      │     └─ Receive: {canvasUrl, overlayedImageUrl, version}
+      │
+      ├─ Clear Canvas
+      │  └─ POST /pages/:id/canvas/clear
+      │
+      ├─ View History
+      │  └─ GET /pages/:id/canvas/versions
+      │
+      └─ Finalize Canvas
+         └─ POST /pages/:id/canvas/finalize
+            ├─ Merge canvas with original
+            └─ Update Page.imageUrl
+
+
+Backend Service: CanvasService
+════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         CANVAS SERVICE METHODS                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  async saveCanvas(pageId, drawingData, options):                         │
+│    1. Deserialize and validate strokes                                   │
+│    2. Render strokes to PNG using Sharp/Canvas                           │
+│    3. Composite with original image (if requested)                       │
+│    4. Generate thumbnail                                                 │
+│    5. Upload to Supabase:                                                │
+│       - canvas/{pageId}_v{n}.png (pure drawing)                          │
+│       - overlay/{pageId}_v{n}.png (composite)                            │
+│       - thumbnail/{pageId}.png (preview)                                 │
+│    6. Save to Canvas table in DB                                         │
+│    7. Return: {canvasUrl, overlayedImageUrl, version}                    │
+│                                                                          │
+│  async getCanvas(pageId):                                                │
+│    1. Query Canvas table for latest version                              │
+│    2. Deserialize strokesData (from BYTEA)                               │
+│    3. Return: {strokes, canvasWidth, canvasHeight, ...}                  │
+│                                                                          │
+│  async renderCanvasImage(data):                                          │
+│    1. Create image buffer (1024x1536 or custom size)                     │
+│    2. For each stroke:                                                   │
+│       - Set color, width, opacity                                        │
+│       - Draw path from points array                                      │
+│    3. Return PNG Buffer                                                  │
+│                                                                          │
+│  async compositeImages(originalUrl, canvasImage):                        │
+│    1. Fetch original image from Supabase URL                             │
+│    2. Load both images using Sharp                                       │
+│    3. Composite: canvasImage on top of original                          │
+│    4. Return merged PNG Buffer                                           │
+│                                                                          │
+│  async finalizeCanvas(pageId, options):                                  │
+│    1. Get canvas for pageId                                              │
+│    2. Get current page imageUrl                                          │
+│    3. If mergeMode === 'overlay':                                        │
+│       - Composite canvas with original                                   │
+│    4. Upload final composite to Supabase                                 │
+│    5. Update Page record:                                                │
+│       - Page.imageUrl = final composite URL                              │
+│       - Page.version += 1                                                │
+│       - Page.canvasId = canvas.id                                        │
+│       - Page.canvasVersion = canvas.version                              │
+│    6. Return: {imageUrl, compositeUrl}                                   │
+│                                                                          │
+│  async clearCanvas(pageId):                                              │
+│    1. Delete all strokes for pageId                                      │
+│    2. Mark as deleted in Canvas table                                    │
+│    3. Clean up Supabase files                                            │
+│                                                                          │
+│  async getCanvasVersions(pageId):                                        │
+│    1. Query Canvas table for all versions of pageId                      │
+│    2. Return: [{version, thumbnail, createdAt, strokeCount}, ...]        │
+│                                                                          │
+│  async restoreCanvasVersion(canvasId, version):                          │
+│    1. Query CanvasHistory for canvasId:version                           │
+│    2. Restore strokes from historical snapshot                           │
+│    3. Update Canvas.isLatest flags                                       │
+│    4. Re-render and re-upload images                                     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+Integration with EpisodesService
+═════════════════════════════════════════════════════════════════════════════
+
+When fetching a page:
+
+  getPageById(pageId)
+    └─ Include: { canvas: true }
+    └─ Return additional fields:
+       ├─ canvasUrl: page.canvas?.overlayImageUrl
+       ├─ canvasVersion: page.canvasVersion
+       ├─ canvasEnabled: page.canvasEnabled
+       └─ lastCanvasEdit: page.lastCanvasEdit
+
+
+Integration with ExportService (Future)
+═════════════════════════════════════════════════════════════════════════════
+
+When exporting to PDF/CBZ:
+
+  export(options)
+    └─ For each page:
+       ├─ If canvasEnabled && page.canvas exists:
+       │  └─ Use page.canvas.overlayImageUrl (composite)
+       └─ Else:
+          └─ Use page.imageUrl (original)
+    └─ Render PDF/CBZ with canvas-included pages
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        DATABASE SCHEMA CHANGES                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+NEW TABLE: Canvas
+────────────────────────────────────────────────────────────────────────────
+
+  id (UUID) PRIMARY KEY
+      └─ Unique identifier for each canvas
+
+  pageId (UUID) UNIQUE, FK → Page.id ON DELETE CASCADE
+      └─ One canvas per page
+
+  episodeId (UUID) FK → Episode.id ON DELETE CASCADE
+      └─ Track which episode this canvas belongs to
+
+  strokesData (BYTEA)
+      └─ Compressed stroke array (MessagePack/Protobuf)
+      └─ Contains all drawing data needed for undo/redo
+
+  strokeCount (INT)
+      └─ Denormalized for quick stats queries
+
+  canvasWidth (INT) DEFAULT 1024
+  canvasHeight (INT) DEFAULT 1536
+      └─ Canvas dimensions (standard manga page size)
+
+  canvasImageUrl (TEXT)
+      └─ URL to pure drawing (before compositing)
+      └─ https://supabase.../canvas/{pageId}_v{n}.png
+
+  overlayImageUrl (TEXT)
+      └─ URL to composite image (original + canvas)
+      └─ https://supabase.../overlay/{pageId}_v{n}.png
+
+  thumbnail (TEXT)
+      └─ Small preview for version browser
+      └─ https://supabase.../thumbnail/{pageId}.png
+
+  version (INT) DEFAULT 1
+      └─ Canvas version counter (increments on save)
+
+  isLatest (BOOLEAN) DEFAULT true
+      └─ Flag for quick lookup of current version
+
+  createdAt (TIMESTAMP) DEFAULT NOW()
+  modifiedAt (TIMESTAMP) DEFAULT NOW()
+      └─ Track creation and last modification
+
+  Indexes:
+    ├─ PRIMARY KEY (id)
+    ├─ UNIQUE (pageId)
+    ├─ INDEX (episodeId)
+    └─ INDEX (createdAt)
+
+
+MODIFIED TABLE: Page
+────────────────────────────────────────────────────────────────────────────
+
+  EXISTING COLUMNS:
+    ├─ id, episodeId, pageNumber, status, imageUrl, ...
+    └─ overlays (JSON) - existing overlay data
+
+  NEW COLUMNS:
+    ├─ canvasId (UUID) FK → Canvas.id ON DELETE SET NULL
+    │  └─ Reference to associated canvas
+
+    ├─ canvasVersion (INT) DEFAULT 0
+    │  └─ Denormalized canvas version for quick access
+
+    ├─ lastCanvasEdit (TIMESTAMP) NULLABLE
+    │  └─ When canvas was last modified
+
+    ├─ canvasEnabled (BOOLEAN) DEFAULT false
+    │  └─ Whether canvas is active for this page
+
+    └─ Indexes:
+       ├─ INDEX (canvasId)
+       └─ INDEX (canvasEnabled)
+
+
+OPTIONAL TABLE: CanvasHistory
+────────────────────────────────────────────────────────────────────────────
+
+  id (UUID) PRIMARY KEY
+  canvasId (UUID) FK → Canvas.id ON DELETE CASCADE
+  version (INT)
+  strokeCount (INT)
+  thumbnail (TEXT)
+  createdAt (TIMESTAMP) DEFAULT NOW()
+
+  UNIQUE (canvasId, version)
+  INDEX (canvasId, version DESC)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        API ENDPOINT MAPPING                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+PagesController Changes:
+════════════════════════════════════════════════════════════════════════════
+
+EXISTING ENDPOINTS (unchanged):
+  GET    /pages/:id                    ← Get page details
+  GET    /pages/:id/overlays           ← Get overlays
+  POST   /pages/:id/overlays           ← Save overlays
+  POST   /pages/:id/regenerate         ← AI-powered regeneration
+  GET    /pages/:id/dialogue           ← Get dialogue
+  POST   /pages/:id/read               ← TTS generation
+
+NEW ENDPOINTS (for canvas):
+  POST   /pages/:id/canvas             ← Save drawing strokes
+  GET    /pages/:id/canvas             ← Get current canvas data
+  POST   /pages/:id/canvas/clear       ← Clear all strokes
+  POST   /pages/:id/canvas/finalize    ← Merge & finalize
+  GET    /pages/:id/canvas/versions    ← Get version history
+  POST   /pages/:id/canvas/undo        ← Undo last stroke (optional)
+  POST   /pages/:id/canvas/redo        ← Redo last stroke (optional)
+
+
+Request/Response Examples:
+════════════════════════════════════════════════════════════════════════════
+
+Save Canvas:
+  POST /pages/page-123/canvas
+  
+  Request: {
+    "drawingData": {
+      "strokes": [
+        {
+          "id": "s1",
+          "points": [{x: 100, y: 200}, {x: 110, y: 210}, ...],
+          "color": "#000000",
+          "width": 2,
+          "opacity": 1.0,
+          "tool": "pen",
+          "timestamp": 1700000000
+        },
+        ...
+      ],
+      "canvasWidth": 1024,
+      "canvasHeight": 1536,
+      "backgroundColor": "#ffffff"
+    },
+    "saveAsVersion": false,        ← overwrite or create new version
+    "generateThumbnail": true      ← create preview
+  }
+  
+  Response: {
+    "ok": true,
+    "canvasUrl": "https://supabase.../canvas/page-123_v1.png",
+    "overlayedImageUrl": "https://supabase.../overlay/page-123_v1.png",
+    "thumbnail": "https://supabase.../thumbnail/page-123.png",
+    "version": 1,
+    "strokeCount": 15,
+    "modifiedAt": "2025-11-17T12:00:00Z"
+  }
+
+
+Get Canvas Data:
+  GET /pages/page-123/canvas
+  
+  Response: {
+    "ok": true,
+    "strokes": [...],              ← Full stroke array
+    "canvasWidth": 1024,
+    "canvasHeight": 1536,
+    "version": 1,
+    "strokeCount": 15,
+    "canvasUrl": "https://...",
+    "overlayedImageUrl": "https://...",
+    "thumbnail": "https://...",
+    "createdAt": "2025-11-17T10:00:00Z",
+    "modifiedAt": "2025-11-17T12:00:00Z"
+  }
+
+
+Finalize Canvas:
+  POST /pages/page-123/canvas/finalize
+  
+  Request: {
+    "includeCanvas": true,
+    "mergeMode": "overlay"         ← "overlay" or "replace"
+  }
+  
+  Response: {
+    "ok": true,
+    "imageUrl": "https://supabase.../episodes/manga/page_01_v2.png",
+    "compositeUrl": "https://...",
+    "version": 2,
+    "pageVersion": 2,
+    "canvasPreserved": true        ← Canvas still editable
+  }
+
+
+Get Canvas Versions:
+  GET /pages/page-123/canvas/versions
+  
+  Response: {
+    "ok": true,
+    "versions": [
+      {
+        "version": 3,
+        "thumbnail": "https://...",
+        "createdAt": "2025-11-17T14:00:00Z",
+        "strokeCount": 25
+      },
+      {
+        "version": 2,
+        "thumbnail": "https://...",
+        "createdAt": "2025-11-17T12:00:00Z",
+        "strokeCount": 15
+      },
+      {
+        "version": 1,
+        "thumbnail": "https://...",
+        "createdAt": "2025-11-17T10:00:00Z",
+        "strokeCount": 8
+      }
+    ]
+  }
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      DATA FLOW: SAVE CANVAS OPERATION                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Frontend (CanvasEditor)
+    ↓
+User draws on canvas
+    ↓
+[Auto-save every 5 seconds or on pointerup]
+    ↓
+POST /pages/:id/canvas
+│   ├─ Serialize strokes to JSON
+│   └─ Send: {strokes, canvasWidth, canvasHeight, ...}
+    ↓
+PagesController.saveCanvas()
+    ├─ Validate request
+    └─ Call CanvasService.saveCanvas()
+         ↓
+    CanvasService.saveCanvas()
+         ├─ 1. Deserialize strokes
+         ├─ 2. Validate stroke data
+         ├─ 3. renderCanvasImage(strokes)
+         │    └─ Use Sharp/Canvas to draw all strokes
+         ├─ 4. compositeImages(original, canvasBuffer)
+         │    └─ Blend canvas with original image
+         ├─ 5. generateThumbnail()
+         ├─ 6. StorageService.uploadImage() × 3
+         │    ├─ Upload pure drawing
+         │    ├─ Upload composite
+         │    └─ Upload thumbnail
+         ├─ 7. Compress strokes: MessagePack
+         ├─ 8. Save to Canvas table:
+         │    ├─ INSERT if new
+         │    └─ UPDATE if exists
+         └─ Return URLs & metadata
+             ↓
+    Response:
+    ├─ canvasUrl: URL of pure drawing
+    ├─ overlayedImageUrl: URL of composite
+    ├─ version: incremented
+    └─ modifiedAt: timestamp
+             ↓
+Frontend Updates UI
+    ├─ Show composite preview
+    ├─ Update version badge
+    ├─ Show "saved" indicator
+    └─ Continue accepting input
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   TECH STACK FOR CANVAS FEATURE                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Frontend:
+  ├─ Fabric.js (v5+)
+  │  └─ Rich drawing capabilities, broad browser support
+  │  └─ Features: free drawing, undo/redo, layers, animations
+  │
+  ├─ React Hook: Custom useCanvas() for state management
+  │  └─ Manage strokes, undo/redo stack, auto-save
+  │
+  └─ Tailwind CSS for UI components
+
+Backend (Node.js):
+  ├─ Sharp (image processing)
+  │  └─ Fast, native image rendering and compositing
+  │  └─ Support: resize, overlay, blend modes
+  │
+  ├─ MessagePack (stroke compression)
+  │  └─ ~30% smaller than JSON
+  │  └─ Better performance for large stroke arrays
+  │
+  └─ Prisma (ORM for Canvas table)
+      └─ Query optimization, transaction support
+
+Storage:
+  └─ Supabase (S3-compatible bucket)
+      └─ Public URLs, fast delivery, CDN support
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     INTEGRATION TIMELINE & EFFORT                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Phase 1: Backend Foundation (P0) - 4-5 days
+═════════════════════════════════════════════════════════════════════════════
+
+  [ ] Database Migration (1 day)
+      ├─ Create Canvas table
+      ├─ Extend Page table with canvas references
+      └─ Create indexes
+
+  [ ] CanvasService Implementation (2 days)
+      ├─ Stroke management
+      ├─ Image rendering (Sharp integration)
+      ├─ Composite generation
+      ├─ Upload to Supabase
+      └─ Version management
+
+  [ ] PagesController Updates (1 day)
+      ├─ POST /pages/:id/canvas
+      ├─ GET /pages/:id/canvas
+      ├─ POST /pages/:id/canvas/finalize
+      └─ Other canvas endpoints
+
+  [ ] Integration with EpisodesService (0.5 days)
+      └─ Link canvas to pages in responses
+
+
+Phase 2: Frontend Canvas Editor (P1) - 3-4 days
+═════════════════════════════════════════════════════════════════════════════
+
+  [ ] CanvasEditor Component (3 days)
+      ├─ Canvas setup with Fabric.js
+      ├─ Drawing tools (pen, pencil, brush, eraser)
+      ├─ Color picker & brush controls
+      ├─ Undo/Redo implementation
+      ├─ Real-time preview
+      ├─ Auto-save logic
+      └─ Layer toggle
+
+  [ ] Studio Page Integration (1 day)
+      ├─ Add Canvas tab
+      ├─ Tab navigation
+      ├─ Load/save canvas state
+      └─ Error handling
+
+
+Phase 3: Advanced Features (P2) - 2-3 days
+═════════════════════════════════════════════════════════════════════════════
+
+  [ ] Canvas Finalization (1 day)
+      ├─ Composite merging
+      ├─ Update page imageUrl
+      ├─ Version tracking
+
+  [ ] Version History & Restore (1 day)
+      ├─ GET /canvas/versions endpoint
+      ├─ Version browser UI
+      ├─ Restore functionality
+
+  [ ] Export Integration (0.5 days)
+      ├─ Include canvas in PDF export
+      ├─ Include canvas in CBZ export
+
+  [ ] Performance Optimization (0.5 days)
+      ├─ Stroke compression tuning
+      ├─ Rendering optimization
+      └─ Database query optimization
+
+
+Phase 4: Polish & Testing (P3) - 2-3 days
+═════════════════════════════════════════════════════════════════════════════
+
+  [ ] Testing (1 day)
+      ├─ Unit tests (stroke rendering, compositing)
+      ├─ Integration tests (API endpoints)
+      └─ E2E tests (user workflows)
+
+  [ ] Documentation (0.5 days)
+      ├─ API documentation
+      ├─ Component documentation
+      └─ User guide
+
+  [ ] Performance Tuning (0.5 days)
+      ├─ Large stroke handling
+      ├─ Memory optimization
+      └─ Upload speed
+
+
+Total Estimated Effort: ~12-15 days (full-time)
+Total Estimated Effort: ~4-5 weeks (half-time)
+
+
+═════════════════════════════════════════════════════════════════════════════
+
+For more details, see:
+  - CANVAS_FEATURE_INTEGRATION.md (Comprehensive guide)
+  - CANVAS_INTEGRATION_QUICK_START.md (Quick reference)
+
+═════════════════════════════════════════════════════════════════════════════

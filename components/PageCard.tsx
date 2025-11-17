@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Link from 'next/link';
 
 interface PageCardProps {
   page: number;
@@ -9,9 +10,10 @@ interface PageCardProps {
   onViewFull?: () => void;
   error?: string;
   onRetry?: () => void;
+  pageId?: string;
 }
 
-export default function PageCard({ page, imageUrl, seed, progress, isGenerating, onViewFull, error, onRetry }: PageCardProps) {
+export default function PageCard({ page, imageUrl, seed, progress, isGenerating, onViewFull, error, onRetry, pageId }: PageCardProps) {
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -57,17 +59,32 @@ export default function PageCard({ page, imageUrl, seed, progress, isGenerating,
               onLoad={handleImageLoad}
               onError={handleImageError}
             />
-            {!isLoading && onViewFull && (
+            {!isLoading && (onViewFull || pageId) && (
               <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-200 flex items-center justify-center">
-                <button 
-                  onClick={onViewFull}
-                  className="opacity-0 group-hover:opacity-100 bg-white bg-opacity-90 text-gray-800 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-opacity-100"
-                >
-                  <svg className="w-4 h-4 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zM12 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1V4zM12 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-3z" clipRule="evenodd" />
-                  </svg>
-                  View Full
-                </button>
+                <div className="opacity-0 group-hover:opacity-100 flex flex-col gap-2 transition-all duration-200">
+                  {onViewFull && (
+                    <button
+                      onClick={onViewFull}
+                      className="bg-white bg-opacity-90 text-gray-800 px-3 py-2 rounded-lg text-sm font-medium hover:bg-opacity-100"
+                    >
+                      <svg className="w-4 h-4 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zM12 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1V4zM12 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-3z" clipRule="evenodd" />
+                      </svg>
+                      View Full
+                    </button>
+                  )}
+                  {pageId && (
+                    <Link
+                      href={`/canvas/${pageId}`}
+                      className="bg-purple-600 bg-opacity-90 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-opacity-100 text-center"
+                    >
+                      <svg className="w-4 h-4 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                      </svg>
+                      Draw / Refine
+                    </Link>
+                  )}
+                </div>
               </div>
             )}
           </div>

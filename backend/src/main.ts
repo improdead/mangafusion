@@ -3,11 +3,16 @@ import { resolve } from 'path';
 
 // Load .env from parent directory (root of project)
 config({ path: resolve(__dirname, '../../.env') });
+
+// IMPORTANT: Load instrumentation BEFORE anything else
+import './instrumentation';
+
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import * as net from 'net';
+import * as Sentry from '@sentry/node';
 
 async function findOpenPort(start: number, maxAttempts = 10): Promise<number> {
   const tryPort = (port: number) =>
@@ -38,9 +43,12 @@ async function bootstrap() {
   const corsOrigin = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()) : ['http://localhost:3000'];
   app.enableCors({
     origin: corsOrigin,
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-Correlation-ID', 'X-Request-ID'],
   });
+
+  // Sentry is initialized in instrumentation.ts
+  // Error handling is automatic with @sentry/nestjs integration
 
   const desired = process.env.PORT ? parseInt(process.env.PORT) : 4000;
   const port = await findOpenPort(desired, 20);

@@ -23,6 +23,9 @@ model Episode {
   updatedAt     DateTime @updatedAt
   pages         Page[]
   characters    Character[]
+
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model Page {
@@ -31,6 +34,7 @@ model Page {
   pageNumber Int
   status     PageStatus
   imageUrl   String?
+  audioUrl   String?
   seed       Int?
   version    Int?       @default(0)
   error      String?
@@ -39,6 +43,9 @@ model Page {
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   @@unique([episodeId, pageNumber])
+  @@index([episodeId])
+  @@index([status])
+  @@index([episodeId, status])
 }
 
 model Character {
@@ -54,4 +61,49 @@ model Character {
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   @@unique([episodeId, assetFilename])
+  @@index([episodeId])
+}
+
+model Canvas {
+  id                String              @id @default(uuid())
+  pageId            String              @unique
+  canvasData        Json?               // Serialized Fabric.js canvas data
+  thumbnailUrl      String?
+  width             Int                 @default(1024)
+  height            Int                 @default(1024)
+  version           Int                 @default(1)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  page              Page                @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  refinementVersions RefinementVersion[]
+
+  @@index([pageId])
+  @@index([updatedAt])
+}
+
+model RefinementVersion {
+  id                  String   @id @default(uuid())
+  canvasId            String
+  pageId              String
+  originalSketchUrl   String?  // URL to the sketch image
+  refinedImageUrl     String   // URL to the AI-generated refined image
+  promptDescription   String?
+  style               String   @default("manga")
+  strength            Float    @default(0.7) // ControlNet strength 0-1
+  controlnetType      String   @default("scribble") // scribble, canny, etc.
+  aiProvider          String   @default("segmind")
+  processingTimeMs    Int?
+  qualityScore        Float?
+  userAccepted        Boolean  @default(false)
+  isCurrentVersion    Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  canvas              Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+
+  @@index([canvasId])
+  @@index([pageId])
+  @@index([userAccepted])
+  @@index([isCurrentVersion])
+  @@index([createdAt])
 }
