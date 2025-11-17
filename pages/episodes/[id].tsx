@@ -40,6 +40,10 @@ export default function EpisodeReader() {
   const [ttsUsage, setTtsUsage] = useState<any>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'cbz'>('pdf');
+  const [includeAudio, setIncludeAudio] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const sorted = useMemo(() => {
     const arr: PageState[] = [];
@@ -163,7 +167,7 @@ export default function EpisodeReader() {
         }),
       });
       const data = await response.json();
-      
+
       if (data.error) {
         console.error('Audio generation failed:', data.error);
         alert('Audio generation failed: ' + data.error);
@@ -172,7 +176,7 @@ export default function EpisodeReader() {
 
       setAudioUrl(data.audioUrl);
       setDialogues(data.dialogues || []);
-      
+
       // Auto-play the audio
       if (audioRef.current) {
         audioRef.current.load();
@@ -183,6 +187,45 @@ export default function EpisodeReader() {
       alert('Audio generation failed');
     } finally {
       setIsLoadingAudio(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!id || Array.isArray(id)) return;
+
+    setIsExporting(true);
+    try {
+      const url = `${API_BASE}/episodes/${id}/export?format=${exportFormat}&includeAudio=${includeAudio}`;
+      const response = await fetch(url, { method: 'POST' });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Export failed' }));
+        throw new Error(errorData.error || 'Export failed');
+      }
+
+      // Get the filename from the Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch?.[1] || `episode_${exportFormat}.${exportFormat}`;
+
+      // Download the file
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setShowExportModal(false);
+      alert(`Successfully exported as ${filename}!`);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Export failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -513,8 +556,8 @@ export default function EpisodeReader() {
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Manga Complete!</h3>
                 <p className="text-gray-600 mb-6">Your 10-page manga episode has been generated successfully.</p>
                 <div className="flex space-x-3 justify-center">
-                  <button className="btn-secondary">
-                    Download PDF
+                  <button onClick={() => setShowExportModal(true)} className="btn-secondary">
+                    Export Episode
                   </button>
                   <Link href={`/studio/${id}`} className="btn-primary">
                     Edit In Studio
@@ -522,6 +565,136 @@ export default function EpisodeReader() {
                   <Link href="/" className="btn-secondary">
                     Create Another
                   </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Export Modal */}
+        {showExportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-900">Export Episode</h3>
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Format Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Export Format
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="radio"
+                        name="format"
+                        value="pdf"
+                        checked={exportFormat === 'pdf'}
+                        onChange={(e) => setExportFormat(e.target.value as 'pdf')}
+                        className="mr-3"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">PDF</div>
+                        <div className="text-sm text-gray-500">
+                          All pages combined into a single PDF document
+                        </div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="radio"
+                        name="format"
+                        value="cbz"
+                        checked={exportFormat === 'cbz'}
+                        onChange={(e) => setExportFormat(e.target.value as 'cbz')}
+                        className="mr-3"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">CBZ (Comic Book Archive)</div>
+                        <div className="text-sm text-gray-500">
+                          ZIP archive with images and metadata for comic readers
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Audio Option */}
+                <div>
+                  <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={includeAudio}
+                      onChange={(e) => setIncludeAudio(e.target.checked)}
+                      className="mr-3"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900">Include Audio Files</div>
+                      <div className="text-sm text-gray-500">
+                        Include audiobook narration (if available)
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Export Info */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-1">Export Details:</p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>{completedPages} pages ready for export</li>
+                        <li>Original image quality preserved</li>
+                        <li>Metadata and page order included</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    onClick={() => setShowExportModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    disabled={isExporting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleExport}
+                    disabled={isExporting || completedPages === 0}
+                    className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg flex items-center justify-center"
+                  >
+                    {isExporting ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                        </svg>
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                        Export
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

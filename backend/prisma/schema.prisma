@@ -23,6 +23,9 @@ model Episode {
   updatedAt     DateTime @updatedAt
   pages         Page[]
   characters    Character[]
+
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model Page {
@@ -31,6 +34,7 @@ model Page {
   pageNumber Int
   status     PageStatus
   imageUrl   String?
+  audioUrl   String?
   seed       Int?
   version    Int?       @default(0)
   error      String?
@@ -39,6 +43,9 @@ model Page {
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   @@unique([episodeId, pageNumber])
+  @@index([episodeId])
+  @@index([status])
+  @@index([episodeId, status])
 }
 
 model Character {
@@ -54,4 +61,5 @@ model Character {
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   @@unique([episodeId, assetFilename])
+  @@index([episodeId])
 }

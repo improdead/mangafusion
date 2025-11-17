@@ -31,6 +31,7 @@ Transform your ideas into stunning manga pages with AI-powered storytelling and 
 
 ### Prerequisites
 - Node.js 18+
+- PostgreSQL 12+ (optional, for data persistence)
 - Supabase account (for image storage)
 - Google AI API key (for Gemini models)
 - ElevenLabs API key (for audiobook feature)
@@ -64,7 +65,26 @@ SUPABASE_BUCKET=manga-images
    - Make it public
    - Set allowed MIME types: `image/png`, `image/jpeg`, `image/webp`, `audio/mpeg`
 
-4. **Start development servers:**
+4. **(Optional) Set up PostgreSQL Database:**
+   ```bash
+   # Create database
+   sudo -u postgres createdb mangafusion
+
+   # Add to backend/.env
+   DATABASE_URL="postgresql://user:password@localhost:5432/mangafusion"
+
+   # Run migrations
+   cd backend
+   npm run prisma:migrate:deploy
+   npm run prisma:seed  # Optional: add test data
+   ```
+
+   📖 **Full database setup guide:** [backend/DATABASE_SETUP.md](backend/DATABASE_SETUP.md)
+   🔍 **Quick reference:** [backend/PRISMA_QUICK_REFERENCE.md](backend/PRISMA_QUICK_REFERENCE.md)
+
+   **Note:** Without a database, episodes are stored in-memory and lost on restart.
+
+5. **Start development servers:**
 ```bash
 # Start both frontend and backend
 ./dev.sh
@@ -130,6 +150,15 @@ cd backend && npm run start:dev
 - `/src/tts/` - ElevenLabs text-to-speech integration
 - `/src/episodes/` - Episode and page management
 - `/src/storage/` - Supabase file storage
+- `/src/prisma/` - Database ORM and persistence layer
+
+### Database (PostgreSQL + Prisma)
+- **Episode**: Stores manga episodes with seed input and outlines
+- **Page**: Tracks individual pages with status, images, and audio
+- **Character**: Maintains character reference images for consistency
+- **In-memory fallback**: Works without database, data lost on restart
+- **Transaction support**: Atomic operations for data integrity
+- **Comprehensive indexes**: Optimized for common queries
 
 ## Environment Variables
 
@@ -141,11 +170,18 @@ ELEVENLABS_API_KEY=your-elevenlabs-api-key
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 
-# Optional
+# Optional - Database (for persistence)
+DATABASE_URL=postgresql://user:password@localhost:5432/mangafusion
+
+# Optional - AI Models
 PLANNER_MODEL=gemini-2.5-flash
 RENDERER_IMAGE_MODEL=gemini-2.5-flash-image-preview
+
+# Optional - TTS
 ELEVENLABS_DEFAULT_VOICE_ID=pNInz6obpgDQGcFmaJgB
 ELEVENLABS_MODEL=eleven_flash_v2_5
+
+# Optional - Storage & Server
 SUPABASE_BUCKET=manga-images
 PORT=4000
 ```

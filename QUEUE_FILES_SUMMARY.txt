@@ -1,0 +1,169 @@
+=============================================================================
+BULLMQ + REDIS QUEUE IMPLEMENTATION - FILE SUMMARY
+=============================================================================
+
+FILES CREATED:
+-------------
+
+1. /home/user/mangafusion/backend/src/queue/queue.service.ts (ENHANCED)
+   - Multiple queue support (pages, characters)
+   - Job management (enqueue, cancel, status)
+   - Queue monitoring (stats, pause/resume, cleanup)
+   - Priority system implementation
+
+2. /home/user/mangafusion/backend/src/queue/queue-events-bridge.service.ts (NEW)
+   - Redis pub/sub subscriber for worker events
+   - Bridges worker events to SSE EventsService
+   - Automatic lifecycle management (OnModuleInit/Destroy)
+
+3. /home/user/mangafusion/backend/src/queue/queue.controller.ts (NEW)
+   - Admin API endpoints for queue monitoring
+   - Job status queries and cancellation
+   - Queue health checks and stats
+
+4. /home/user/mangafusion/backend/src/worker/generate.worker.ts (REWRITTEN)
+   - Standalone worker process for background jobs
+   - Processes both page and character generation
+   - Integrates with Renderer and Storage services
+   - Emits progress events via Redis pub/sub
+   - Graceful shutdown handling
+
+5. /home/user/mangafusion/backend/.env.queue.example (NEW)
+   - Environment variable documentation
+   - Configuration examples
+
+6. /home/user/mangafusion/QUEUE_IMPLEMENTATION_SUMMARY.md (NEW)
+   - Comprehensive documentation
+   - Architecture overview
+   - Testing and deployment instructions
+
+
+FILES MODIFIED:
+--------------
+
+1. /home/user/mangafusion/backend/src/queue/queue.module.ts
+   - Added QueueController
+   - Added QueueEventsBridgeService
+   - Imported EventsModule
+
+2. /home/user/mangafusion/backend/src/episodes/episodes.service.ts
+   - Imported QueueService
+   - Injected queue service in constructor
+   - Updated startGeneration() for queue support
+   - Updated generateCharacters() for queue support
+   - Maintains fallback to in-process generation
+
+3. /home/user/mangafusion/backend/src/episodes/episodes.module.ts
+   - Imported QueueModule
+
+4. /home/user/mangafusion/backend/package.json
+   - Added ioredis: ^5.3.2
+
+
+PACKAGE.JSON SCRIPTS:
+--------------------
+
+Existing:
+- npm run dev (API server)
+- npm run build (TypeScript compilation)
+- npm run start (Production API)
+
+Queue-related:
+- npm run worker:generate (Start background worker)
+
+
+NPM PACKAGES ADDED:
+------------------
+
+- ioredis (^5.3.2) - Redis client for pub/sub
+
+
+ENVIRONMENT VARIABLES:
+---------------------
+
+New Required:
+- REDIS_URL - Redis connection string
+
+New Optional:
+- WORKER_CONCURRENCY_PAGES (default: 2)
+- WORKER_CONCURRENCY_CHARACTERS (default: 1)
+
+
+API ENDPOINTS ADDED:
+-------------------
+
+- GET    /admin/queue/health          - Queue health check
+- GET    /admin/queue/stats           - Queue statistics
+- POST   /admin/queue/pause           - Pause queues
+- POST   /admin/queue/resume          - Resume queues
+- POST   /admin/queue/clean           - Clean old jobs
+- GET    /admin/queue/:queue/:jobId   - Get job details
+- DELETE /admin/queue/:queue/:jobId   - Cancel job
+
+
+QUEUE NAMES:
+-----------
+
+- generate:page      - Page generation queue (priority: 10)
+- generate:character - Character generation queue (priority: 1)
+
+
+REDIS CHANNELS:
+--------------
+
+- worker:events - Pub/sub channel for worker → API events
+
+
+KEY FEATURES:
+------------
+
+✅ Background job processing with BullMQ
+✅ Redis-based job queue
+✅ Parallel page generation (configurable concurrency)
+✅ Priority-based character generation
+✅ SSE event streaming from background workers
+✅ Graceful fallback when Redis unavailable
+✅ Job retry with exponential backoff (3 attempts)
+✅ Queue monitoring and admin API
+✅ Job cancellation support
+✅ Comprehensive error handling
+✅ Database integration for job status
+✅ Horizontal scalability (multiple workers)
+
+
+STARTUP SEQUENCE:
+----------------
+
+Development:
+1. Start Redis: docker run -d -p 6379:6379 redis:alpine
+2. Set REDIS_URL in .env
+3. Terminal 1: npm run dev (API)
+4. Terminal 2: npm run worker:generate (Worker)
+
+Production:
+1. Ensure Redis is available
+2. Build: npm run build
+3. Start API: node dist/main.js
+4. Start Worker: node dist/worker/generate.worker.js
+   (Use PM2 or systemd for process management)
+
+
+FALLBACK BEHAVIOR:
+-----------------
+
+When REDIS_URL is NOT set:
+- Queue is disabled
+- Uses in-process generation (original behavior)
+- No worker process needed
+- SSE events work via direct EventsService
+
+
+BACKWARD COMPATIBILITY:
+----------------------
+
+✅ 100% compatible with existing codebase
+✅ No breaking changes to API
+✅ In-process fallback when Redis unavailable
+✅ Existing SSE streaming unchanged
+✅ Database schema unchanged
+=============================================================================

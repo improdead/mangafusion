@@ -1,0 +1,31 @@
+{
+  "title": "The Last Guardian",
+  "description": "In a post-apocalyptic city where technology has failed and ancient powers have awakened, a lone warrior must protect the last sanctuary of humanity from supernatural threats. As darkness closes in, she discovers that the greatest danger may come from within.",
+  "genre_tags": ["action", "fantasy", "dark fantasy", "supernatural"],
+  "tone": "Epic and dramatic with moments of quiet introspection",
+  "setting": "A crumbling megacity reclaimed by nature, with towering ruins and mystical energy",
+  "visual_vibe": "Dark fantasy with high contrast, dramatic lighting, and ethereal effects",
+  "cast": [
+    {
+      "name": "Kira",
+      "traits": "Brave, determined, haunted by her past",
+      "silhouette": "Athletic build, battle-hardened",
+      "outfit": "Worn armored cloak with mystical runes",
+      "notable_prop": "Ancient glowing sword"
+    },
+    {
+      "name": "Ren",
+      "traits": "Mysterious, wise, cryptic",
+      "silhouette": "Tall and lean",
+      "outfit": "Flowing robes with celestial patterns",
+      "notable_prop": "Staff with floating crystal"
+    },
+    {
+      "name": "Mori",
+      "traits": "Young, energetic, hopeful",
+      "silhouette": "Small, agile",
+      "outfit": "Patchwork survival gear",
+      "notable_prop": "Makeshift slingshot"
+    }
+  ]
+}

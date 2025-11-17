@@ -3,11 +3,13 @@ import { EventsModule } from '../events/events.module';
 import { PlannerModule } from '../planner/planner.module';
 import { RendererModule } from '../renderer/renderer.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { QueueModule } from '../queue/queue.module';
+import { ExportModule } from '../export/export.module';
 import { EpisodesController } from './episodes.controller';
 import { EpisodesService } from './episodes.service';
 
 @Module({
-  imports: [EventsModule, PlannerModule, RendererModule, PrismaModule],
+  imports: [EventsModule, PlannerModule, RendererModule, PrismaModule, QueueModule, ExportModule],
   controllers: [EpisodesController],
   providers: [EpisodesService],
   exports: [EpisodesService],

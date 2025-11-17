@@ -16,8 +16,6 @@ import {
   RetryConfig,
 } from './planner.utils';
 import { generateStubOutline, mergeWithStub } from './planner.fallback';
-import { LoggerService } from '../observability/logger.service';
-import { TracingService } from '../observability/tracing.service';
 
 /**
  * Error types for better error handling
@@ -54,7 +52,6 @@ export class PlannerService {
   private readonly enablePartialMerge = process.env.PLANNER_ENABLE_PARTIAL_MERGE !== 'false';
 
   private readonly metrics = new PlannerMetrics();
-  private readonly logger: LoggerService;
 
   // Retry configuration
   private readonly retryConfig: RetryConfig = {
@@ -63,13 +60,6 @@ export class PlannerService {
     maxDelayMs: parseInt(process.env.PLANNER_MAX_DELAY_MS || '10000', 10),
     backoffMultiplier: parseFloat(process.env.PLANNER_BACKOFF_MULTIPLIER || '2'),
   };
-
-  constructor(
-    logger: LoggerService,
-    private readonly tracing: TracingService,
-  ) {
-    this.logger = logger.child({ context: 'PlannerService' });
-  }
 
   private get geminiClient() {
     if (!this.geminiApiKey) throw new Error('GEMINI_API_KEY not set');
@@ -86,10 +76,9 @@ export class PlannerService {
    */
   async generateOutline(seed: EpisodeSeed): Promise<PlannerOutput> {
     const startTime = Date.now();
-    this.logger.log('Starting Planner Request', {
-      provider: this.provider,
-      seedTitle: seed.title,
-    });
+    console.log('=== Starting Planner Request ===');
+    console.log('Provider:', this.provider);
+    console.log('Seed title:', seed.title);
 
     try {
       // Step 1: Validate input
@@ -100,22 +89,23 @@ export class PlannerService {
 
       // Step 3: Log success
       const duration = Date.now() - startTime;
-      this.logger.log('Planner Success', { duration });
+      console.log(`=== Planner Success (${duration}ms) ===`);
 
       return output;
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error('Planner Failed', error instanceof Error ? error.stack : undefined, { duration });
+      console.error(`=== Planner Failed (${duration}ms) ===`);
+      console.error('Error:', error);
 
       // Fallback to stub outline if enabled
       if (this.enableStubFallback) {
-        this.logger.log('Attempting fallback to stub outline');
+        console.log('Attempting fallback to stub outline...');
         try {
           const stubOutput = generateStubOutline(seed);
-          this.logger.log('Stub outline generated successfully');
+          console.log('Stub outline generated successfully');
           return stubOutput;
         } catch (stubError) {
-          this.logger.error('Stub outline generation also failed', stubError instanceof Error ? stubError.stack : undefined);
+          console.error('Stub outline generation also failed:', stubError);
         }
       }
 
@@ -131,11 +121,11 @@ export class PlannerService {
   private validateInput(seed: EpisodeSeed): void {
     try {
       EpisodeSeedSchema.parse(seed);
-      this.logger.debug('Input validation passed');
+      console.log('Input validation passed');
     } catch (error) {
       if (error instanceof ZodError) {
         const details = formatZodError(error);
-        this.logger.error('Input validation failed', undefined, { details });
+        console.error('Input validation failed:', details);
         throw new PlannerValidationError('Invalid episode seed data', details);
       }
       throw error;
@@ -187,7 +177,7 @@ export class PlannerService {
     const { system, user, schema } = this.buildPrompt(seed);
 
     try {
-      this.logger.log(`Calling OpenAI ${this.openaiModel} for manga planning`);
+      console.log(`Calling OpenAI ${this.openaiModel} for manga planning...`);
 
       const response = await this.openaiClient.chat.completions.create({
         model: this.openaiModel,
@@ -204,14 +194,14 @@ export class PlannerService {
         throw new PlannerApiError('No response content from OpenAI', 'openai');
       }
 
-      this.logger.debug('Response received, extracting and validating JSON');
+      console.log('Response received, extracting and validating JSON...');
       return this.extractAndValidate(text, seed);
     } catch (error) {
       if (error instanceof PlannerValidationError || error instanceof PlannerJsonExtractionError) {
         throw error;
       }
 
-      this.logger.error('OpenAI API error', error instanceof Error ? error.stack : undefined);
+      console.error('OpenAI API error:', error);
       throw new PlannerApiError(
         `OpenAI API failed: ${error instanceof Error ? error.message : String(error)}`,
         'openai'
@@ -230,7 +220,7 @@ export class PlannerService {
     const { system, user, schema } = this.buildPrompt(seed);
 
     try {
-      this.logger.log(`Calling Gemini ${this.geminiModel} for manga planning`);
+      console.log(`Calling Gemini ${this.geminiModel} for manga planning...`);
 
       const model = this.geminiClient.getGenerativeModel({
         model: this.geminiModel,
@@ -244,14 +234,14 @@ export class PlannerService {
         throw new PlannerApiError('No response content from Gemini', 'gemini');
       }
 
-      this.logger.debug('Response received, extracting and validating JSON');
+      console.log('Response received, extracting and validating JSON...');
       return this.extractAndValidate(text, seed);
     } catch (error) {
       if (error instanceof PlannerValidationError || error instanceof PlannerJsonExtractionError) {
         throw error;
       }
 
-      this.logger.error('Gemini API error', error instanceof Error ? error.stack : undefined);
+      console.error('Gemini API error:', error);
       throw new PlannerApiError(
         `Gemini API failed: ${error instanceof Error ? error.message : String(error)}`,
         'gemini'
@@ -267,9 +257,9 @@ export class PlannerService {
     let json: any;
     try {
       json = extractAndRepairJson(text);
-      this.logger.debug('JSON extraction successful');
+      console.log('JSON extraction successful');
     } catch (error) {
-      this.logger.error('JSON extraction failed', error instanceof Error ? error.stack : undefined);
+      console.error('JSON extraction failed:', error);
       throw new PlannerJsonExtractionError(
         `Failed to extract JSON: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -278,24 +268,24 @@ export class PlannerService {
     // Step 2: Validate against schema
     try {
       const validated = PlannerOutputSchema.parse(json);
-      this.logger.debug('Schema validation passed');
+      console.log('Schema validation passed');
       return validated;
     } catch (error) {
       if (error instanceof ZodError) {
         const details = formatZodError(error);
-        this.logger.error('Schema validation failed', undefined, { details });
+        console.error('Schema validation failed:', details);
 
         // Attempt partial merge if enabled
         if (this.enablePartialMerge) {
-          this.logger.log('Attempting to merge partial output with stub');
+          console.log('Attempting to merge partial output with stub...');
           try {
             const merged = mergeWithStub(json as Partial<PlannerOutput>, seed);
             // Validate the merged result
             const validatedMerged = PlannerOutputSchema.parse(merged);
-            this.logger.log('Partial merge successful and validated');
+            console.log('Partial merge successful and validated');
             return validatedMerged;
           } catch (mergeError) {
-            this.logger.error('Partial merge failed', mergeError instanceof Error ? mergeError.stack : undefined);
+            console.error('Partial merge failed:', mergeError);
           }
         }
 

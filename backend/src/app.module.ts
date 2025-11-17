@@ -7,9 +7,22 @@ import { RendererModule } from './renderer/renderer.module';
 import { StorageModule } from './storage/storage.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TTSModule } from './tts/tts.module';
+import { ExportModule } from './export/export.module';
+import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
-  imports: [EventsModule, PlannerModule, RendererModule, StorageModule, PrismaModule, TTSModule, EpisodesModule, PagesModule],
+  imports: [
+    ObservabilityModule,
+    EventsModule,
+    PlannerModule,
+    RendererModule,
+    StorageModule,
+    PrismaModule,
+    TTSModule,
+    ExportModule,
+    EpisodesModule,
+    PagesModule,
+  ],
 })
 export class AppModule {}
 

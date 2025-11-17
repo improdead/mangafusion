@@ -1,14 +1,20 @@
-import { Body, Controller, Get, Param, Post, Sse, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res, Sse, UploadedFile, UseInterceptors, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Observable } from 'rxjs';
+import { Response } from 'express';
 import { EventsService, EventPayload } from '../events/events.service';
 import { EpisodesService } from './episodes.service';
+import { ExportService } from '../export/export.service';
 import { EpisodeSeed } from './types';
 
 @Controller()
 export class EpisodesController {
-  constructor(private readonly episodes: EpisodesService, private readonly events: EventsService) {}
+  constructor(
+    private readonly episodes: EpisodesService,
+    private readonly events: EventsService,
+    private readonly exportService: ExportService
+  ) {}
 
   @Get('health')
   health() {
@@ -63,5 +69,69 @@ export class EpisodesController {
   @Sse('episodes/:id/stream')
   stream(@Param('id') id: string): Observable<{ data: EventPayload }> {
     return this.events.stream(id);
+  }
+
+  @Post('episodes/:id/export')
+  async exportEpisode(
+    @Param('id') id: string,
+    @Query('format') format: string = 'pdf',
+    @Query('includeAudio') includeAudio: string = 'false',
+    @Res() res: Response
+  ) {
+    try {
+      // Validate format
+      if (!['pdf', 'cbz'].includes(format)) {
+        return res.status(400).json({ error: 'Invalid format. Must be "pdf" or "cbz"' });
+      }
+
+      // Get episode data
+      const episode = await this.episodes.getEpisode(id);
+      if (!episode) {
+        return res.status(404).json({ error: 'Episode not found' });
+      }
+
+      // Check if episode has pages
+      if (!episode.pages || episode.pages.length === 0) {
+        return res.status(400).json({ error: 'Episode has no pages' });
+      }
+
+      // Filter pages that have images
+      const pagesWithImages = episode.pages.filter(p => p.imageUrl);
+      if (pagesWithImages.length === 0) {
+        return res.status(400).json({ error: 'Episode has no generated pages yet' });
+      }
+
+      // Sort pages by page number
+      const sortedPages = pagesWithImages
+        .map(p => ({
+          pageNumber: p.pageNumber,
+          imageUrl: p.imageUrl,
+          audioUrl: (p as any).audioUrl,
+        }))
+        .sort((a, b) => a.pageNumber - b.pageNumber);
+
+      const episodeTitle = episode.seedInput?.title || `Episode_${id}`;
+
+      // Generate export
+      const result = await this.exportService.export({
+        episodeId: id,
+        episodeTitle,
+        pages: sortedPages,
+        format: format as 'pdf' | 'cbz',
+        includeAudio: includeAudio === 'true',
+      });
+
+      // Set response headers
+      res.setHeader('Content-Type', result.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Content-Length', result.size);
+
+      // Send the file
+      res.send(result.buffer);
+    } catch (error) {
+      console.error('Export error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Export failed';
+      res.status(500).json({ error: errorMessage });
+    }
   }
 }

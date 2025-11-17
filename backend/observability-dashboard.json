@@ -1,0 +1,146 @@
+{
+  "name": "MangaFusion Observability Dashboard",
+  "description": "Sample dashboard configuration for Grafana, Datadog, or similar tools",
+  "panels": [
+    {
+      "title": "API Request Rate",
+      "type": "graph",
+      "query": "rate(http_requests_total[5m])",
+      "description": "HTTP requests per second across all endpoints"
+    },
+    {
+      "title": "API Latency (P95)",
+      "type": "graph",
+      "query": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+      "description": "95th percentile API latency in seconds"
+    },
+    {
+      "title": "Error Rate",
+      "type": "graph",
+      "query": "rate(http_requests_total{status=~\"5..\"}[5m])",
+      "description": "5xx error rate per second"
+    },
+    {
+      "title": "Manga Operations by Type",
+      "type": "pie",
+      "query": "sum by (operation) (manga_operations_total)",
+      "description": "Distribution of manga operations (planning, generation, etc.)"
+    },
+    {
+      "title": "Page Generation Time (P95)",
+      "type": "graph",
+      "query": "histogram_quantile(0.95, rate(manga_page_generation_duration_seconds_bucket[5m]))",
+      "description": "95th percentile page generation time"
+    },
+    {
+      "title": "AI Token Usage",
+      "type": "graph",
+      "query": "rate(ai_tokens_total[5m])",
+      "description": "AI API tokens consumed per second"
+    },
+    {
+      "title": "AI API Cost (Estimated)",
+      "type": "graph",
+      "query": "rate(ai_cost_usd_total[1h]) * 3600",
+      "description": "Estimated AI API cost per hour in USD"
+    },
+    {
+      "title": "Active Episodes",
+      "type": "stat",
+      "query": "count(manga_episode_status{status=\"in_progress\"})",
+      "description": "Number of episodes currently being generated"
+    },
+    {
+      "title": "Success Rate by Operation",
+      "type": "table",
+      "query": "sum by (operation) (rate(manga_operations_total{status=\"success\"}[5m])) / sum by (operation) (rate(manga_operations_total[5m])) * 100",
+      "description": "Success percentage for each operation type"
+    },
+    {
+      "title": "Database Query Latency",
+      "type": "graph",
+      "query": "histogram_quantile(0.95, rate(prisma_query_duration_seconds_bucket[5m]))",
+      "description": "95th percentile database query time"
+    }
+  ],
+  "alerts": [
+    {
+      "name": "High Error Rate",
+      "condition": "rate(http_requests_total{status=~\"5..\"}[5m]) > 0.05",
+      "description": "Alert when 5xx error rate exceeds 5%",
+      "severity": "critical"
+    },
+    {
+      "name": "Slow Page Generation",
+      "condition": "histogram_quantile(0.95, rate(manga_page_generation_duration_seconds_bucket[5m])) > 60",
+      "description": "Alert when P95 page generation time exceeds 60s",
+      "severity": "warning"
+    },
+    {
+      "name": "High AI Cost",
+      "condition": "rate(ai_cost_usd_total[1h]) * 3600 * 24 > 100",
+      "description": "Alert when projected daily AI cost exceeds $100",
+      "severity": "warning"
+    },
+    {
+      "name": "Service Down",
+      "condition": "up{job=\"mangafusion-backend\"} == 0",
+      "description": "Alert when backend service is down",
+      "severity": "critical"
+    }
+  ],
+  "log_queries": [
+    {
+      "name": "Recent Errors",
+      "query": "{level=\"error\"} | json | line_format \"{{.time}} [{{.context}}] {{.msg}}\"",
+      "description": "Show recent error logs with context"
+    },
+    {
+      "name": "AI API Calls",
+      "query": "{metric_type=\"ai_api_call\"} | json | line_format \"{{.provider}}/{{.model}} - {{.operation}} - {{.latency_ms}}ms - ${{.cost}}\"",
+      "description": "Show AI API call logs with provider, latency, and cost"
+    },
+    {
+      "name": "Manga Operations",
+      "query": "{metric_type=\"manga_generation\"} | json | line_format \"{{.operation}} - {{.status}} - Episode: {{.episodeId}}\"",
+      "description": "Show manga generation operations"
+    },
+    {
+      "name": "High Latency Requests",
+      "query": "{request_type=\"http_request\", latency_ms>5000} | json | line_format \"{{.http_method}} {{.http_url}} - {{.latency_ms}}ms\"",
+      "description": "Show HTTP requests taking longer than 5 seconds"
+    },
+    {
+      "name": "Trace by Correlation ID",
+      "query": "{correlation_id=\"<CORRELATION_ID>\"} | json",
+      "description": "Find all logs for a specific request (replace <CORRELATION_ID>)"
+    }
+  ],
+  "sentry_saved_searches": [
+    {
+      "name": "Frontend Errors",
+      "query": "is:unresolved environment:production platform:javascript",
+      "description": "Unresolved frontend errors in production"
+    },
+    {
+      "name": "Backend Errors",
+      "query": "is:unresolved environment:production platform:node",
+      "description": "Unresolved backend errors in production"
+    },
+    {
+      "name": "AI API Errors",
+      "query": "is:unresolved tags[ai.provider]:openai OR tags[ai.provider]:gemini",
+      "description": "Errors related to AI API calls"
+    },
+    {
+      "name": "High Impact Errors",
+      "query": "is:unresolved event.type:error user.count:>=10",
+      "description": "Errors affecting 10 or more users"
+    },
+    {
+      "name": "Performance Issues",
+      "query": "transaction.duration:>5s environment:production",
+      "description": "Slow transactions (>5s) in production"
+    }
+  ]
+}

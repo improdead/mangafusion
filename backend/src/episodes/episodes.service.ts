@@ -1,14 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { EventsService } from '../events/events.service';
 import { PlannerService } from '../planner/planner.service';
 import { getRendererConfig } from '../renderer/config';
 import { RendererService } from '../renderer/renderer.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueueService } from '../queue/queue.service';
+import { withPrismaErrorHandling, withPrismaTransaction } from '../prisma/prisma-error-handler';
 import { Character, Episode, EpisodeSeed, Page, PlannerOutput, PlannerOutlinePage, PlannerCharacter } from './types';
 
 @Injectable()
 export class EpisodesService {
+  private readonly logger = new Logger(EpisodesService.name);
   private episodes = new Map<string, Episode>();
   private pages = new Map<string, Page>();
   private characters = new Map<string, Character[]>(); // episodeId -> characters
@@ -20,6 +23,7 @@ export class EpisodesService {
     private readonly planner: PlannerService,
     private readonly renderer: RendererService,
     private readonly prisma: PrismaService,
+    private readonly queue: QueueService,
   ) {}
 
   async planEpisode(seed: EpisodeSeed): Promise<{ episodeId: string; outline: PlannerOutput }> {
@@ -44,52 +48,71 @@ export class EpisodesService {
     const plannedCharacters = this.deriveCharacters(seed, outline);
 
     if (this.prisma.enabled) {
-      const created = await this.prisma.client.episode.create({
-        data: {
-          id,
-          seedInput: seed as any,
-          outline: outline as any,
-          rendererModel: rendererModel,
-          pages: {
-            create: Array.from({ length: 10 }).map((_, idx) => ({
-              pageNumber: idx + 1,
-              status: 'queued',
-              version: 0,
-            })),
-          },
-        },
-        include: { pages: true },
-      });
-      // mirror minimal state in-memory so existing methods can operate
-      const episode: Episode = {
-        id: created.id,
-        seedInput: seed,
-        outline,
-        pages: created.pages.map((p: any) => ({
-          id: p.id,
-          episodeId: created.id,
-          pageNumber: p.pageNumber,
-          status: p.status as any,
-          version: p.version ?? 0,
-        })),
-        createdAt: new Date(created.createdAt).getTime(),
-        updatedAt: new Date(created.updatedAt).getTime(),
-        rendererModel: created.rendererModel ?? undefined,
-      };
-      this.episodes.set(id, episode);
-      for (const p of episode.pages) this.pages.set(p.id, p);
+      try {
+        // Use transaction to ensure episode, pages, and characters are created atomically
+        const created = await withPrismaTransaction(
+          this.prisma.client,
+          'planEpisode',
+          async (tx) => {
+            // Create episode with pages in a single transaction
+            const episode = await tx.episode.create({
+              data: {
+                id,
+                seedInput: seed as any,
+                outline: outline as any,
+                rendererModel: rendererModel,
+                pages: {
+                  create: Array.from({ length: 10 }).map((_, idx) => ({
+                    pageNumber: idx + 1,
+                    status: 'queued',
+                    version: 0,
+                  })),
+                },
+              },
+              include: { pages: true },
+            });
 
-      // Persist characters (without images yet)
-      if (plannedCharacters.length > 0) {
-        await this.prisma.client.character.createMany({
-          data: plannedCharacters.map((c) => ({
-            episodeId: id,
-            name: c.name,
-            description: c.description,
-            assetFilename: c.asset_filename,
+            // Create characters in the same transaction
+            if (plannedCharacters.length > 0) {
+              await tx.character.createMany({
+                data: plannedCharacters.map((c) => ({
+                  episodeId: id,
+                  name: c.name,
+                  description: c.description,
+                  assetFilename: c.asset_filename,
+                })),
+                skipDuplicates: true,
+              } as any);
+            }
+
+            return episode;
+          },
+        );
+
+        this.logger.log(`Created episode ${id} in database with ${created.pages.length} pages`);
+
+        // mirror minimal state in-memory so existing methods can operate
+        const episode: Episode = {
+          id: created.id,
+          seedInput: seed,
+          outline,
+          pages: created.pages.map((p: any) => ({
+            id: p.id,
+            episodeId: created.id,
+            pageNumber: p.pageNumber,
+            status: p.status as any,
+            version: p.version ?? 0,
           })),
-          skipDuplicates: true,
-        } as any);
+          createdAt: new Date(created.createdAt).getTime(),
+          updatedAt: new Date(created.updatedAt).getTime(),
+          rendererModel: created.rendererModel ?? undefined,
+        };
+        this.episodes.set(id, episode);
+        for (const p of episode.pages) this.pages.set(p.id, p);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.logger.error(`Failed to create episode in database: ${err.message}`, err.stack);
+        throw err;
       }
     } else {
       const episode: Episode = {
@@ -139,19 +162,28 @@ export class EpisodesService {
 
   async getPageById(pageId: string): Promise<Page | undefined> {
     if (this.prisma.enabled) {
-      const p = await this.prisma.client.page.findUnique({ where: { id: pageId } });
-      if (!p) return undefined;
-      return {
-        id: p.id,
-        episodeId: p.episodeId,
-        pageNumber: p.pageNumber,
-        status: p.status as any,
-        imageUrl: p.imageUrl ?? undefined,
-        seed: p.seed ?? undefined,
-        version: p.version ?? undefined,
-        error: p.error ?? undefined,
-        overlays: (p as any).overlays ?? undefined,
-      };
+      const result = await withPrismaErrorHandling(
+        `getPageById(${pageId})`,
+        async () => {
+          const p = await this.prisma.client.page.findUnique({ where: { id: pageId } });
+          if (!p) return undefined;
+          return {
+            id: p.id,
+            episodeId: p.episodeId,
+            pageNumber: p.pageNumber,
+            status: p.status as any,
+            imageUrl: p.imageUrl ?? undefined,
+            seed: p.seed ?? undefined,
+            version: p.version ?? undefined,
+            error: p.error ?? undefined,
+            overlays: (p as any).overlays ?? undefined,
+          };
+        },
+        undefined, // fallback to undefined to avoid type mismatch
+      );
+
+      // If DB query fails, manually check in-memory as secondary fallback
+      if (result) return result;
     }
     return this.pages.get(pageId);
   }
@@ -161,7 +193,9 @@ export class EpisodesService {
     if (!page) throw new Error('Page not found');
     page.overlays = overlays;
     if (this.prisma.enabled) {
-      await this.prisma.client.page.update({ where: { id: pageId }, data: { overlays } as any });
+      await withPrismaErrorHandling(`setPageOverlays(${pageId})`, async () => {
+        await this.prisma.client.page.update({ where: { id: pageId }, data: { overlays } as any });
+      });
     } else {
       this.pages.set(pageId, page);
     }
@@ -283,40 +317,49 @@ export class EpisodesService {
 
   async getEpisode(episodeId: string): Promise<Episode | undefined> {
     if (this.prisma.enabled) {
-      const e = await this.prisma.client.episode.findUnique({
-        where: { id: episodeId },
-        include: { pages: { orderBy: { pageNumber: 'asc' } }, characters: true } as any,
-      });
-      if (!e) return undefined;
-      return {
-        id: e.id,
-        seedInput: e.seedInput as any,
-        outline: (e.outline as any) ?? undefined,
-        pages: e.pages.map((p: any) => ({
-          id: p.id,
-          episodeId: p.episodeId,
-          pageNumber: p.pageNumber,
-          status: p.status as any,
-          imageUrl: p.imageUrl ?? undefined,
-          seed: p.seed ?? undefined,
-          version: p.version ?? undefined,
-          error: p.error ?? undefined,
-          overlays: Array.isArray((p as any).overlays)
-            ? (p as any).overlays
-            : (p as any).overlays?.items ?? undefined,
-        })),
-        createdAt: new Date(e.createdAt).getTime(),
-        updatedAt: new Date(e.updatedAt).getTime(),
-        rendererModel: e.rendererModel ?? undefined,
-        characters: (e as any).characters?.map((c: any) => ({
-          id: c.id,
-          episodeId: c.episodeId,
-          name: c.name,
-          description: c.description ?? undefined,
-          assetFilename: c.assetFilename,
-          imageUrl: c.imageUrl ?? undefined,
-        })),
-      };
+      const result = await withPrismaErrorHandling(
+        `getEpisode(${episodeId})`,
+        async () => {
+          const e = await this.prisma.client.episode.findUnique({
+            where: { id: episodeId },
+            include: { pages: { orderBy: { pageNumber: 'asc' } }, characters: true } as any,
+          });
+          if (!e) return undefined;
+          return {
+            id: e.id,
+            seedInput: e.seedInput as any,
+            outline: (e.outline as any) ?? undefined,
+            pages: e.pages.map((p: any) => ({
+              id: p.id,
+              episodeId: p.episodeId,
+              pageNumber: p.pageNumber,
+              status: p.status as any,
+              imageUrl: p.imageUrl ?? undefined,
+              seed: p.seed ?? undefined,
+              version: p.version ?? undefined,
+              error: p.error ?? undefined,
+              overlays: Array.isArray((p as any).overlays)
+                ? (p as any).overlays
+                : (p as any).overlays?.items ?? undefined,
+            })),
+            createdAt: new Date(e.createdAt).getTime(),
+            updatedAt: new Date(e.updatedAt).getTime(),
+            rendererModel: e.rendererModel ?? undefined,
+            characters: (e as any).characters?.map((c: any) => ({
+              id: c.id,
+              episodeId: c.episodeId,
+              name: c.name,
+              description: c.description ?? undefined,
+              assetFilename: c.assetFilename,
+              imageUrl: c.imageUrl ?? undefined,
+            })),
+          };
+        },
+        undefined, // fallback to undefined to avoid type mismatch
+      );
+
+      // If DB query fails, manually check in-memory as secondary fallback
+      if (result) return result;
     }
     const ep = this.episodes.get(episodeId);
     if (!ep) return undefined;
@@ -332,9 +375,34 @@ export class EpisodesService {
     // Ensure characters are generated first
     await this.ensureCharacters(episodeId);
 
-    for (let i = 1; i <= 10; i++) {
-      const page = ep.pages.find((p) => p.pageNumber === i)!;
-      await this.simulatePageGeneration(ep, page);
+    // Use queue if enabled, otherwise fall back to in-process generation
+    if (this.queue.enabled) {
+      this.logger.log(`Using background queue for episode ${episodeId} page generation`);
+
+      // Enqueue all page generation jobs
+      const styleRefUrls = (await this.listStyleRefs(episodeId)).refs;
+
+      for (let i = 1; i <= 10; i++) {
+        const page = ep.pages.find((p) => p.pageNumber === i)!;
+
+        await this.queue.enqueueGeneratePage({
+          episodeId: ep.id,
+          pageId: page.id,
+          pageNumber: page.pageNumber,
+          seed: page.seed,
+          styleRefUrls,
+        });
+
+        this.logger.debug(`Enqueued page ${i} generation for episode ${episodeId}`);
+      }
+    } else {
+      this.logger.log(`Using in-process generation for episode ${episodeId} (queue disabled)`);
+
+      // In-process generation (existing behavior)
+      for (let i = 1; i <= 10; i++) {
+        const page = ep.pages.find((p) => p.pageNumber === i)!;
+        await this.simulatePageGeneration(ep, page);
+      }
     }
   }
 
@@ -505,52 +573,108 @@ export class EpisodesService {
     const ep = await this.getEpisode(episodeId);
     if (!ep || !ep.outline) return;
     const plannedCharacters = this.deriveCharacters(ep.seedInput, ep.outline);
+    const visualStyle = ep.outline.pages[0]?.visual_style || 'manga style';
 
-    for (const c of plannedCharacters) {
-      // skip if already have image
-      if (this.prisma.enabled) {
-        const existing = await (this.prisma.client as any).character.findFirst({
-          where: { episodeId, assetFilename: c.asset_filename },
-        });
-        if (existing?.imageUrl) continue;
-      } else {
-        const arr = this.characters.get(episodeId) || [];
-        const match = arr.find((x) => x.assetFilename === c.asset_filename);
-        if (match?.imageUrl) continue;
-      }
+    // Use queue if enabled, otherwise fall back to in-process generation
+    if (this.queue.enabled) {
+      this.logger.log(`Using background queue for episode ${episodeId} character generation`);
 
-      try {
-        const { imageUrl } = await this.renderer.generateCharacter({
-          episodeTitle: ep.seedInput.title,
+      for (const c of plannedCharacters) {
+        // Get or create character in DB first
+        let characterId: string;
+
+        if (this.prisma.enabled) {
+          const existing = await (this.prisma.client as any).character.findFirst({
+            where: { episodeId, assetFilename: c.asset_filename },
+          });
+
+          if (existing?.imageUrl) {
+            this.logger.debug(`Character ${c.name} already has image, skipping`);
+            continue; // Already has image
+          }
+
+          if (existing) {
+            characterId = existing.id;
+          } else {
+            // Create character record
+            const created = await (this.prisma.client as any).character.create({
+              data: {
+                episodeId,
+                name: c.name,
+                description: c.description,
+                assetFilename: c.asset_filename,
+              },
+            });
+            characterId = created.id;
+          }
+        } else {
+          // In-memory mode: skip queueing if no DB
+          continue;
+        }
+
+        // Enqueue character generation job
+        await this.queue.enqueueGenerateCharacter({
+          episodeId,
+          characterId,
           name: c.name,
           description: c.description,
           assetFilename: c.asset_filename,
-          visualStyle: ep.outline.pages[0]?.visual_style || 'manga style',
+          visualStyle,
+          episodeTitle: ep.seedInput.title,
         });
+
+        this.logger.debug(`Enqueued character ${c.name} generation for episode ${episodeId}`);
+      }
+    } else {
+      this.logger.log(`Using in-process character generation for episode ${episodeId} (queue disabled)`);
+
+      // In-process generation (existing behavior)
+      for (const c of plannedCharacters) {
+        // skip if already have image
         if (this.prisma.enabled) {
-          await (this.prisma.client as any).character.upsert({
-            where: { episodeId_assetFilename: { episodeId, assetFilename: c.asset_filename } },
-            update: { imageUrl, name: c.name, description: c.description },
-            create: {
-              episodeId,
-              name: c.name,
-              description: c.description,
-              assetFilename: c.asset_filename,
-              imageUrl,
-            },
+          const existing = await (this.prisma.client as any).character.findFirst({
+            where: { episodeId, assetFilename: c.asset_filename },
           });
+          if (existing?.imageUrl) continue;
         } else {
           const arr = this.characters.get(episodeId) || [];
-          const existing = arr.find((x) => x.assetFilename === c.asset_filename);
-          if (existing) {
-            existing.imageUrl = imageUrl;
-          } else {
-            arr.push({ id: randomUUID(), episodeId, name: c.name, description: c.description, assetFilename: c.asset_filename, imageUrl });
-          }
-          this.characters.set(episodeId, arr);
+          const match = arr.find((x) => x.assetFilename === c.asset_filename);
+          if (match?.imageUrl) continue;
         }
-      } catch (e) {
-        console.warn('Character gen failed for', c.name, e);
+
+        try {
+          const { imageUrl } = await this.renderer.generateCharacter({
+            episodeTitle: ep.seedInput.title,
+            name: c.name,
+            description: c.description,
+            assetFilename: c.asset_filename,
+            visualStyle,
+          });
+          if (this.prisma.enabled) {
+            await (this.prisma.client as any).character.upsert({
+              where: { episodeId_assetFilename: { episodeId, assetFilename: c.asset_filename } },
+              update: { imageUrl, name: c.name, description: c.description },
+              create: {
+                episodeId,
+                name: c.name,
+                description: c.description,
+                assetFilename: c.asset_filename,
+                imageUrl,
+              },
+            });
+          } else {
+            const arr = this.characters.get(episodeId) || [];
+            const existing = arr.find((x) => x.assetFilename === c.asset_filename);
+            if (existing) {
+              existing.imageUrl = imageUrl;
+            } else {
+              arr.push({ id: randomUUID(), episodeId, name: c.name, description: c.description, assetFilename: c.asset_filename, imageUrl });
+            }
+            this.characters.set(episodeId, arr);
+          }
+        } catch (e) {
+          console.warn('Character gen failed for', c.name, e);
+        }
       }
     }
   }

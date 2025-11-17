@@ -1,0 +1,286 @@
+# Alert Rules Configuration
+# Compatible with Prometheus Alertmanager, Grafana, and similar tools
+
+groups:
+  - name: mangafusion_critical_alerts
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job="mangafusion-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "MangaFusion backend service is down"
+          description: "The backend service has been down for more than 2 minutes"
+          runbook_url: "https://docs.mangafusion.com/runbooks/service-down"
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5..", job="mangafusion-backend"}[5m]))
+            /
+            sum(rate(http_requests_total{job="mangafusion-backend"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes (threshold: 5%)"
+
+      - alert: DatabaseConnectionFailure
+        expr: prisma_connection_errors_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection errors detected"
+          description: "{{ $value }} database connection errors in the last minute"
+
+  - name: mangafusion_performance_alerts
+    interval: 1m
+    rules:
+      - alert: SlowPageGeneration
+        expr: |
+          histogram_quantile(0.95,
+            rate(manga_page_generation_duration_seconds_bucket[5m])
+          ) > 60
+        for: 10m
+        labels:
+          severity: warning
+          component: renderer
+        annotations:
+          summary: "Page generation is slower than expected"
+          description: "P95 page generation time is {{ $value }}s (threshold: 60s)"
+
+      - alert: SlowPlanning
+        expr: |
+          histogram_quantile(0.95,
+            rate(manga_planning_duration_seconds_bucket[5m])
+          ) > 30
+        for: 10m
+        labels:
+          severity: warning
+          component: planner
+        annotations:
+          summary: "Story planning is slower than expected"
+          description: "P95 planning time is {{ $value }}s (threshold: 30s)"
+
+      - alert: HighAPILatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "API latency is higher than expected"
+          description: "P95 API latency is {{ $value }}s (threshold: 5s)"
+
+  - name: mangafusion_cost_alerts
+    interval: 1h
+    rules:
+      - alert: HighAICost
+        expr: |
+          (
+            rate(ai_cost_usd_total[1h]) * 3600 * 24
+          ) > 100
+        for: 1h
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "Projected daily AI cost is high"
+          description: "Projected daily AI cost is ${{ $value | humanize }} (threshold: $100/day)"
+
+      - alert: SpikeInAIUsage
+        expr: |
+          (
+            rate(ai_tokens_total[5m])
+            /
+            rate(ai_tokens_total[5m] offset 1h)
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: ai
+        annotations:
+          summary: "Unusual spike in AI token usage"
+          description: "AI token usage is {{ $value }}x higher than 1 hour ago"
+
+  - name: mangafusion_business_alerts
+    interval: 5m
+    rules:
+      - alert: LowGenerationSuccessRate
+        expr: |
+          (
+            sum(rate(manga_operations_total{status="success"}[30m]))
+            /
+            sum(rate(manga_operations_total[30m]))
+          ) < 0.95
+        for: 30m
+        labels:
+          severity: warning
+          component: generator
+        annotations:
+          summary: "Manga generation success rate is low"
+          description: "Success rate is {{ $value | humanizePercentage }} over the last 30 minutes (threshold: 95%)"
+
+      - alert: NoRecentGenerations
+        expr: |
+          sum(rate(manga_operations_total[1h])) == 0
+        for: 2h
+        labels:
+          severity: info
+          component: generator
+        annotations:
+          summary: "No manga generations in the last 2 hours"
+          description: "This might indicate low user activity or a system issue"
+
+  - name: mangafusion_resource_alerts
+    interval: 1m
+    rules:
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            process_resident_memory_bytes{job="mangafusion-backend"}
+            /
+            node_memory_MemTotal_bytes
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "Backend memory usage is high"
+          description: "Memory usage is {{ $value | humanizePercentage }} (threshold: 90%)"
+
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total{job="mangafusion-backend"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "Backend CPU usage is high"
+          description: "CPU usage is {{ $value | humanizePercentage }} (threshold: 80%)"
+
+  - name: mangafusion_ai_provider_alerts
+    interval: 2m
+    rules:
+      - alert: OpenAIRateLimitHit
+        expr: |
+          sum(rate(ai_rate_limit_errors_total{provider="openai"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+          provider: openai
+        annotations:
+          summary: "OpenAI rate limit errors detected"
+          description: "{{ $value }} rate limit errors in the last 5 minutes"
+
+      - alert: GeminiAPIErrors
+        expr: |
+          sum(rate(ai_api_errors_total{provider="gemini"}[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: ai
+          provider: gemini
+        annotations:
+          summary: "Multiple Gemini API errors detected"
+          description: "{{ $value }} Gemini API errors in the last 5 minutes"
+
+# Sentry Alert Rules (configure in Sentry UI or via API)
+sentry_alerts:
+  - name: "New Unhandled Error Type"
+    project: "mangafusion"
+    conditions:
+      - id: "sentry.rules.conditions.first_seen_event.FirstSeenEventCondition"
+    actions:
+      - id: "sentry.rules.actions.notify_event.NotifyEventAction"
+        targetType: "IssueOwners"
+
+  - name: "High Volume Error"
+    project: "mangafusion"
+    conditions:
+      - id: "sentry.rules.conditions.event_frequency.EventFrequencyCondition"
+        value: 100
+        interval: "1h"
+    actions:
+      - id: "sentry.integrations.slack.notify_action.SlackNotifyServiceAction"
+        workspace: "your-workspace"
+        channel: "#alerts"
+
+  - name: "Regression in Performance"
+    project: "mangafusion"
+    conditions:
+      - id: "sentry.rules.conditions.regression_event.RegressionEventCondition"
+    actions:
+      - id: "sentry.rules.actions.notify_event.NotifyEventAction"
+        targetType: "IssueOwners"
+
+  - name: "Critical Error in Production"
+    project: "mangafusion"
+    conditions:
+      - id: "sentry.rules.filters.level.LevelFilter"
+        level: 40  # ERROR level
+        match: "gte"
+      - id: "sentry.rules.filters.tagged_event.TaggedEventFilter"
+        key: "environment"
+        match: "eq"
+        value: "production"
+    actions:
+      - id: "sentry.integrations.pagerduty.notify_action.PagerDutyNotifyServiceAction"
+        service: "mangafusion-backend"
+        severity: "critical"
+
+# Notification Channels Configuration
+notification_channels:
+  - name: slack_critical
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    severity: critical
+
+  - name: slack_warnings
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    severity: warning
+
+  - name: pagerduty
+    type: pagerduty
+    routing_key: "${PAGERDUTY_ROUTING_KEY}"
+    severity: critical
+
+  - name: email_team
+    type: email
+    to: "team@mangafusion.com"
+    severity: warning
+
+# Alert Routing
+routes:
+  - match:
+      severity: critical
+    receiver: pagerduty
+    continue: true
+
+  - match:
+      severity: critical
+    receiver: slack_critical
+
+  - match:
+      severity: warning
+    receiver: slack_warnings
+
+  - match:
+      component: ai
+      severity: warning
+    receiver: email_team
