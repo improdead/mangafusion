@@ -43,8 +43,14 @@ if (isObservabilityEnabled && process.env.NEXT_PUBLIC_SENTRY_DSN) {
     beforeBreadcrumb(breadcrumb, hint) {
       // Add custom data to breadcrumbs
       if (breadcrumb.category === 'xhr' || breadcrumb.category === 'fetch') {
-        // Add correlation ID if available
-        const correlationId = hint?.xhr?.getResponseHeader?.('X-Correlation-ID');
+        // Add correlation ID if available (handle both xhr and fetch)
+        let correlationId;
+        if (breadcrumb.category === 'xhr') {
+          correlationId = hint?.xhr?.getResponseHeader?.('X-Correlation-ID');
+        } else if (breadcrumb.category === 'fetch' && hint?.response) {
+          correlationId = hint.response.headers?.get?.('X-Correlation-ID');
+        }
+
         if (correlationId) {
           breadcrumb.data = {
             ...breadcrumb.data,

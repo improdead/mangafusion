@@ -105,8 +105,8 @@ export class EpisodesController {
       const sortedPages = pagesWithImages
         .map(p => ({
           pageNumber: p.pageNumber,
-          imageUrl: p.imageUrl,
-          audioUrl: (p as any).audioUrl,
+          imageUrl: p.imageUrl!,
+          audioUrl: (p as any).audioUrl || undefined,
         }))
         .sort((a, b) => a.pageNumber - b.pageNumber);
 
@@ -124,7 +124,7 @@ export class EpisodesController {
       // Set response headers
       res.setHeader('Content-Type', result.mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-      res.setHeader('Content-Length', result.size);
+      res.setHeader('Content-Length', String(result.size));
 
       // Send the file
       res.send(result.buffer);

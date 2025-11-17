@@ -1,4 +1,4 @@
-import { Injectable, LoggerService as NestLoggerService } from '@nestjs/common';
+import { Injectable, LoggerService as NestLoggerService, Optional } from '@nestjs/common';
 import pino, { Logger as PinoLogger } from 'pino';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 
@@ -7,7 +7,7 @@ export class LoggerService implements NestLoggerService {
   private logger: PinoLogger;
   private readonly isProduction = process.env.NODE_ENV === 'production';
 
-  constructor(context?: string) {
+  constructor(@Optional() context?: string) {
     this.logger = pino({
       level: process.env.LOG_LEVEL || (this.isProduction ? 'info' : 'debug'),
       formatters: {

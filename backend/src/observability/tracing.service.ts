@@ -188,18 +188,4 @@ export class TracingService {
     return undefined;
   }
 
-  /**
-   * Create a Sentry transaction for long-running operations
-   * Note: Newer Sentry SDK uses startSpan instead of startTransaction
-   */
-  startSentryTransaction(name: string, op: string) {
-    if (process.env.ENABLE_OBSERVABILITY === 'true' && process.env.SENTRY_DSN) {
-      // Use startSpan for newer Sentry SDK (v8+)
-      return Sentry.startSpan({ name, op }, () => {
-        // Return a mock transaction object for compatibility
-        return { name, op };
-      });
-    }
-    return null;
-  }
 }

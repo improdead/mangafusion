@@ -123,7 +123,13 @@ async function testDatabaseOperations() {
     const result = await prisma.$transaction(async (tx) => {
       const newEpisode = await tx.episode.create({
         data: {
-          seedInput: { title: 'Transaction Test' } as any,
+          seedInput: {
+            title: 'Transaction Test',
+            genre_tags: ['test'],
+            tone: 'test',
+            setting: 'test',
+            cast: [],
+          },
           rendererModel: 'test',
         },
       });

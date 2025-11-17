@@ -99,7 +99,7 @@ export function withObservability<T = any>(
             request: {
               method: req.method,
               url: req.url,
-              headers: req.headers,
+              userAgent: req.headers['user-agent'],
             },
           },
         });
