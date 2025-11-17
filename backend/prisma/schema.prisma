@@ -41,6 +41,7 @@ model Page {
   overlays   Json?
 
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  canvas  Canvas?
 
   @@unique([episodeId, pageNumber])
   @@index([episodeId])
