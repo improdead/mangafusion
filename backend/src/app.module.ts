@@ -9,6 +9,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { TTSModule } from './tts/tts.module';
 import { ExportModule } from './export/export.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { CanvasModule } from './canvas/canvas.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ObservabilityModule } from './observability/observability.module';
     ExportModule,
     EpisodesModule,
     PagesModule,
+    CanvasModule,
   ],
 })
 export class AppModule {}

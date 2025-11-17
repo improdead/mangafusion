@@ -467,6 +467,7 @@ export default function EpisodeReader() {
           {sorted.map((p) => (
             <PageCard
               key={p.page}
+              pageId={p.id}
               page={p.page}
               imageUrl={p.imageUrl}
               seed={p.seed}

@@ -26,6 +26,7 @@
     "@sentry/node": "^10.25.0",
     "@supabase/supabase-js": "^2.39.0",
     "dotenv": "^16.4.5",
+    "fabric": "^6.9.0",
     "formidable": "^3.5.2",
     "next": "^15.5.2",
     "pino": "^10.1.0",
