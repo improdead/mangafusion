@@ -96,8 +96,12 @@ class WorkerStorageService {
       .upload(filename, buffer, { contentType, upsert: true });
 
     if (error) throw new Error(`Storage upload failed: ${error.message}`);
+    if (!data) throw new Error('Storage upload returned no data.');
 
     const { data: publicData } = this.supabase.storage.from(this.bucket).getPublicUrl(data.path);
+    if (!publicData?.publicUrl) {
+      throw new Error('Failed to get public URL for uploaded image.');
+    }
     return publicData.publicUrl;
   }
 }
@@ -421,6 +425,9 @@ async function processCharacterJob(job: Job<GenerateCharacterJobData>) {
   console.log(`[worker:character] Processing character "${name}" for episode ${episodeId}`);
 
   try {
+    // Update status to in_progress (if DB schema supports it - Character model may need a status field)
+    // For now, we'll just proceed with generation
+
     // Generate character image
     const result = await renderer.generateCharacterImage(
       name,
@@ -430,7 +437,7 @@ async function processCharacterJob(job: Job<GenerateCharacterJobData>) {
       assetFilename,
     );
 
-    // Update database
+    // Update database with success
     if (prisma) {
       await (prisma as any).character.update({
         where: { id: characterId },
@@ -438,11 +445,30 @@ async function processCharacterJob(job: Job<GenerateCharacterJobData>) {
       });
     }
 
+    // Emit character_done event for real-time updates
+    await emitEvent({
+      type: 'character_done',
+      episodeId,
+      characterId,
+      name,
+      imageUrl: result.imageUrl,
+    } as any);
+
     console.log(`[worker:character] Completed character "${name}" for episode ${episodeId}`);
     return result;
   } catch (error: any) {
     console.error(`[worker:character] Failed character "${name}":`, error);
-    throw error;
+
+    // Emit character_failed event for real-time updates
+    await emitEvent({
+      type: 'character_failed',
+      episodeId,
+      characterId,
+      name,
+      error: error.message || String(error),
+    } as any);
+
+    throw error; // Re-throw to mark job as failed
   }
 }
 

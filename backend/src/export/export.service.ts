@@ -81,28 +81,48 @@ export class ExportService {
     pdfDoc.setCreationDate(new Date());
     pdfDoc.setModificationDate(new Date());
 
-    // Add each page image to the PDF
-    for (const page of pages) {
-      if (!page.imageUrl) {
-        console.warn(`Page ${page.pageNumber} has no image, skipping`);
+    // Download all images in parallel for better performance
+    const imageDownloadPromises = pages
+      .filter((page) => page.imageUrl)
+      .map(async (page) => {
+        try {
+          const imageBytes = await this.downloadImage(page.imageUrl!);
+          return {
+            pageNumber: page.pageNumber,
+            imageBytes,
+            success: true,
+          };
+        } catch (error) {
+          console.error(`Failed to download image for page ${page.pageNumber}:`, error);
+          return {
+            pageNumber: page.pageNumber,
+            imageBytes: null,
+            success: false,
+          };
+        }
+      });
+
+    const downloadedImages = await Promise.all(imageDownloadPromises);
+
+    // Add each downloaded image to the PDF (must be sequential for correct page order)
+    for (const download of downloadedImages) {
+      if (!download.success || !download.imageBytes) {
+        console.warn(`Page ${download.pageNumber} has no image, skipping`);
         continue;
       }
 
       try {
-        // Download the image
-        const imageBytes = await this.downloadImage(page.imageUrl);
-
         // Embed the image in the PDF
         let image;
         try {
           // Try PNG first
-          image = await pdfDoc.embedPng(imageBytes);
+          image = await pdfDoc.embedPng(download.imageBytes);
         } catch (pngError) {
           try {
             // Try JPEG if PNG fails
-            image = await pdfDoc.embedJpg(imageBytes);
+            image = await pdfDoc.embedJpg(download.imageBytes);
           } catch (jpgError) {
-            console.error(`Failed to embed image for page ${page.pageNumber}:`, jpgError);
+            console.error(`Failed to embed image for page ${download.pageNumber}:`, jpgError);
             continue;
           }
         }
@@ -122,9 +142,9 @@ export class ExportService {
           height: height,
         });
 
-        console.log(`Added page ${page.pageNumber} to PDF (${width}x${height})`);
+        console.log(`Added page ${download.pageNumber} to PDF (${width}x${height})`);
       } catch (error) {
-        console.error(`Error processing page ${page.pageNumber}:`, error);
+        console.error(`Error processing page ${download.pageNumber}:`, error);
         // Continue with next page instead of failing the entire export
       }
     }

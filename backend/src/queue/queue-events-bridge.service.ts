@@ -103,15 +103,45 @@ export class QueueEventsBridgeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Singleton Redis publisher for worker events (prevents connection overhead)
+   */
+  private static publisher: Redis | null = null;
+
+  private static getPublisher(redisUrl: string): Redis {
+    if (!this.publisher) {
+      this.publisher = new Redis(redisUrl, {
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+      });
+
+      // Handle connection errors
+      this.publisher.on('error', (err) => {
+        console.error('Redis publisher error:', err);
+        // Reset publisher on critical errors
+        if (this.publisher?.status === 'end') {
+          this.publisher = null;
+        }
+      });
+    }
+    return this.publisher;
+  }
+
+  /**
+   * Gracefully close the singleton publisher
+   */
+  static async closePublisher(): Promise<void> {
+    if (this.publisher) {
+      await this.publisher.quit();
+      this.publisher = null;
+    }
+  }
+
+  /**
    * Helper for workers to publish events to this bridge.
    * Workers should call this via a Redis publisher.
    */
   static async emitWorkerEvent(redisUrl: string, event: EventPayload): Promise<void> {
-    const publisher = new Redis(redisUrl);
-    try {
-      await publisher.publish('worker:events', JSON.stringify(event));
-    } finally {
-      await publisher.quit();
-    }
+    const publisher = this.getPublisher(redisUrl);
+    await publisher.publish('worker:events', JSON.stringify(event));
   }
 }
