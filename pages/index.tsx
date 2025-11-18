@@ -30,22 +30,40 @@ export default function Home() {
   useEffect(() => {
     // Load content from words.md
     fetch('/words.md')
-      .then(response => response.text())
+      .then(response => {
+        // Check if response is OK and content-type is text/plain or text/markdown
+        if (!response.ok || !response.headers.get('content-type')?.includes('text')) {
+          throw new Error('Invalid response');
+        }
+        return response.text();
+      })
       .then(content => {
+        // Check if content looks like HTML (contains script tags or HTML structure)
+        if (content.trim().startsWith('<!') || content.includes('<script') || content.includes('</html>')) {
+          throw new Error('Response is HTML, not markdown');
+        }
         const lines = content.split('\n').filter(line => line.trim());
         if (lines.length > 0) {
           // Extract title from first line (remove # and trim)
           const title = lines[0].replace(/^#+\s*/, '').trim();
-          setHeroTitle(title);
+          // Sanitize title to prevent HTML injection
+          const sanitizedTitle = title.replace(/<[^>]*>/g, '').trim();
+          if (sanitizedTitle) {
+            setHeroTitle(sanitizedTitle);
+          }
 
           // Extract subtitle from second line if it exists
           if (lines.length > 1) {
-            setHeroSubtitle(lines[1].trim());
+            const subtitle = lines[1].trim().replace(/<[^>]*>/g, '').trim();
+            if (subtitle) {
+              setHeroSubtitle(subtitle);
+            }
           }
         }
       })
       .catch(error => {
         console.log('Could not load words.md, using default text');
+        // Keep default values - don't update state on error
       });
   }, []);
 

@@ -55,6 +55,17 @@ module.exports = require("next/dist/shared/lib/no-fallback-error.external.js");
 
 /***/ }),
 
+/***/ "@opentelemetry/api":
+/*!*************************************!*\
+  !*** external "@opentelemetry/api" ***!
+  \*************************************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("@opentelemetry/api");
+
+/***/ }),
+
 /***/ "next/dist/compiled/next-server/pages.runtime.dev.js":
 /*!**********************************************************************!*\
   !*** external "next/dist/compiled/next-server/pages.runtime.dev.js" ***!

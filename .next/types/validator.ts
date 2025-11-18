@@ -22,6 +22,19 @@ type PagesPageConfig = {
   }
 }
 
+type ApiRouteConfig = {
+  default: (req: any, res: any) => Promise<Response | void> | Response | void
+  config?: {
+    api?: {
+      bodyParser?: boolean | { sizeLimit?: string }
+      responseLimit?: string | number | boolean
+      externalResolver?: boolean
+    }
+    runtime?: 'edge' | 'experimental-edge' | 'nodejs' | string // necessary unless config is exported as const
+    maxDuration?: number
+  }
+}
+
 
 
 
@@ -30,6 +43,12 @@ type PagesPageConfig = {
 // Validate ../../pages/_app.tsx
 {
   const handler = {} as typeof import("../../pages/_app.js")
+  handler satisfies PagesPageConfig
+}
+
+// Validate ../../pages/canvas/[pageId].tsx
+{
+  const handler = {} as typeof import("../../pages/canvas/[pageId].js")
   handler satisfies PagesPageConfig
 }
 
@@ -51,6 +70,100 @@ type PagesPageConfig = {
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/api/episodes/[id]/characters.ts
+{
+  const handler = {} as typeof import("../../pages/api/episodes/[id]/characters.js")
+  handler satisfies ApiRouteConfig
+}
 
+// Validate ../../pages/api/episodes/[id]/generate10.ts
+{
+  const handler = {} as typeof import("../../pages/api/episodes/[id]/generate10.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/episodes/[id]/index.ts
+{
+  const handler = {} as typeof import("../../pages/api/episodes/[id]/index.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/episodes/[id]/stream.ts
+{
+  const handler = {} as typeof import("../../pages/api/episodes/[id]/stream.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/episodes/[id]/style-refs.ts
+{
+  const handler = {} as typeof import("../../pages/api/episodes/[id]/style-refs.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/health.ts
+{
+  const handler = {} as typeof import("../../pages/api/health.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/observability-test.ts
+{
+  const handler = {} as typeof import("../../pages/api/observability-test.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/pages/[id]/dialogue.ts
+{
+  const handler = {} as typeof import("../../pages/api/pages/[id]/dialogue.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/pages/[id]/overlays.ts
+{
+  const handler = {} as typeof import("../../pages/api/pages/[id]/overlays.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/pages/[id]/read.ts
+{
+  const handler = {} as typeof import("../../pages/api/pages/[id]/read.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/pages/[id]/regenerate.ts
+{
+  const handler = {} as typeof import("../../pages/api/pages/[id]/regenerate.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/pages/[id]/retry.ts
+{
+  const handler = {} as typeof import("../../pages/api/pages/[id]/retry.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/planner.ts
+{
+  const handler = {} as typeof import("../../pages/api/planner.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/tts/models.ts
+{
+  const handler = {} as typeof import("../../pages/api/tts/models.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/tts/usage.ts
+{
+  const handler = {} as typeof import("../../pages/api/tts/usage.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/tts/voices.ts
+{
+  const handler = {} as typeof import("../../pages/api/tts/voices.js")
+  handler satisfies ApiRouteConfig
+}
 
 
