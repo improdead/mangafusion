@@ -55,6 +55,7 @@ export class PlannerService {
 
   private readonly metrics = new PlannerMetrics();
   private readonly logger: LoggerService;
+  private readonly tracing: TracingService;
 
   // Retry configuration
   private readonly retryConfig: RetryConfig = {
@@ -64,11 +65,10 @@ export class PlannerService {
     backoffMultiplier: parseFloat(process.env.PLANNER_BACKOFF_MULTIPLIER || '2'),
   };
 
-  constructor(
-    logger: LoggerService,
-    private readonly tracing: TracingService,
-  ) {
-    this.logger = logger.child({ context: 'PlannerService' });
+  constructor(logger?: LoggerService, tracing?: TracingService) {
+    const baseLogger = logger ?? new LoggerService('PlannerService');
+    this.logger = baseLogger.child({ context: 'PlannerService' });
+    this.tracing = tracing ?? new TracingService();
   }
 
   private get geminiClient() {

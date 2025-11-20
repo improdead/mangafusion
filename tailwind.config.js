@@ -31,14 +31,28 @@ module.exports = {
           700: '#7c3aed',
           800: '#6b21a8',
           900: '#581c87',
-        }
+        },
+        'brand-dark': '#111111',
+        'brand-gray': '#F5F5F7',
+        'accent-yellow': '#FFD700',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'bounce-slow': 'bounce 2s infinite',
+        'float': 'float 6s ease-in-out infinite',
+      },
+      borderRadius: {
+        '4xl': '2rem',
+        '5xl': '2.5rem',
+      },
+      keyframes: {
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-10px)' },
+        }
       }
     },
   },

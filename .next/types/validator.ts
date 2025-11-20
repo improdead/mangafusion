@@ -52,6 +52,12 @@ type ApiRouteConfig = {
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/create.tsx
+{
+  const handler = {} as typeof import("../../pages/create.js")
+  handler satisfies PagesPageConfig
+}
+
 // Validate ../../pages/episodes/[id].tsx
 {
   const handler = {} as typeof import("../../pages/episodes/[id].js")

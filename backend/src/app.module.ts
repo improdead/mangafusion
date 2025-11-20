@@ -10,6 +10,7 @@ import { TTSModule } from './tts/tts.module';
 import { ExportModule } from './export/export.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { CanvasModule } from './canvas/canvas.module';
+import { BuilderModule } from './builder/builder.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { CanvasModule } from './canvas/canvas.module';
     EpisodesModule,
     PagesModule,
     CanvasModule,
+    BuilderModule,
   ],
 })
 export class AppModule {}

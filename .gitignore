@@ -6,4 +6,8 @@ web/out
 .next
 test-results
 playwright-report
+.env
+*.env
+.env.local
+.env.*.local
 

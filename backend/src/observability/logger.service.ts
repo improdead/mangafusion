@@ -8,33 +8,44 @@ export class LoggerService implements NestLoggerService {
   private readonly isProduction = process.env.NODE_ENV === 'production';
 
   constructor(@Optional() context?: string) {
-    this.logger = pino({
-      level: process.env.LOG_LEVEL || (this.isProduction ? 'info' : 'debug'),
-      formatters: {
-        level: (label) => {
-          return { level: label };
+    try {
+      this.logger = pino({
+        level: process.env.LOG_LEVEL || (this.isProduction ? 'info' : 'debug'),
+        formatters: {
+          level: (label) => {
+            return { level: label };
+          },
         },
-      },
-      ...(this.isProduction
-        ? {
-            // Production: JSON output
-            timestamp: pino.stdTimeFunctions.isoTime,
-          }
-        : {
-            // Development: Pretty output
-            transport: {
-              target: 'pino-pretty',
-              options: {
-                colorize: true,
-                translateTime: 'HH:MM:ss.l',
-                ignore: 'pid,hostname',
+        ...(this.isProduction
+          ? {
+              // Production: JSON output
+              timestamp: pino.stdTimeFunctions.isoTime,
+            }
+          : {
+              // Development: Pretty output
+              transport: {
+                target: 'pino-pretty',
+                options: {
+                  colorize: true,
+                  translateTime: 'HH:MM:ss.l',
+                  ignore: 'pid,hostname',
+                },
               },
-            },
-          }),
-    });
+            }),
+      });
 
-    if (context) {
-      this.logger = this.logger.child({ context });
+      if (!this.logger) {
+        throw new Error('Failed to initialize pino logger');
+      }
+
+      if (context) {
+        this.logger = this.logger.child({ context });
+      }
+    } catch (error) {
+      // Fallback to console if pino fails to initialize
+      console.error('Failed to initialize LoggerService:', error);
+      // Create a minimal pino logger as fallback
+      this.logger = pino({ level: 'info' });
     }
   }
 
@@ -58,6 +69,9 @@ export class LoggerService implements NestLoggerService {
    * Create a child logger with additional context
    */
   child(bindings: Record<string, any>): LoggerService {
+    if (!this.logger) {
+      throw new Error('Cannot create child logger: parent logger is not initialized');
+    }
     const childLogger = new LoggerService();
     childLogger.logger = this.logger.child(bindings);
     return childLogger;
