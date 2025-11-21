@@ -49,7 +49,7 @@ export const BentoGrid: React.FC = () => {
       </div>
 
       {/* Translation Card */}
-      <div className="bg-[#111111] rounded-[2rem] p-6 text-white flex flex-col justify-between h-48 shadow-sm relative overflow-hidden group">
+      <div className="bg-gradient-to-br from-gray-200 to-white rounded-[2rem] p-6 flex flex-col justify-between h-48 shadow-sm relative overflow-hidden group">
         <div className="relative z-10">
            <div className="flex justify-between items-start">
                <span className="text-xs opacity-70 uppercase tracking-wider">Real-time</span>
@@ -60,8 +60,8 @@ export const BentoGrid: React.FC = () => {
         <p className="text-sm text-gray-400 relative z-10">Read raw chapters in your native language instantly.</p>
         
         {/* Abstract Globe Decor */}
-        <div className="absolute right-[-20px] bottom-[-20px] w-32 h-32 rounded-full border-8 border-white/10 group-hover:scale-110 transition-transform"></div>
-        <div className="absolute right-[-10px] bottom-[-10px] w-24 h-24 rounded-full border-8 border-white/5"></div>
+        <div className="absolute right-[-20px] bottom-[-20px] w-32 h-32 rounded-full border-8 border-black/10 group-hover:scale-110 transition-transform"></div>
+        <div className="absolute right-[-10px] bottom-[-10px] w-24 h-24 rounded-full border-8 border-black/5"></div>
       </div>
 
       {/* AI Recommendations Card */}
