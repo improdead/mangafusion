@@ -226,7 +226,7 @@ export const Hero: React.FC = () => {
     <div className="relative w-full min-h-[95vh] flex flex-col items-center justify-center overflow-hidden bg-[#FAFAFA] pt-20">
       
       {/* Main Content */}
-      <div className="relative z-10 text-center max-w-4xl px-4 flex flex-col items-center pointer-events-none">
+      <div className="relative z-5 text-center max-w-4xl px-4 flex flex-col items-center pointer-events-none">
         
         {/* Hero Headline with Cute Effect */}
         <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 tracking-tight mb-8 leading-[1.1] pointer-events-auto relative">
@@ -285,7 +285,7 @@ export const Hero: React.FC = () => {
                     }
                 }}
                 placeholder="Describe your vibe (e.g., 'Cyberpunk with kittens')..." 
-                className="w-full min-h-[56px] outline-none text-gray-600 text-lg resize-none placeholder:text-gray-300 bg-transparent py-1 leading-relaxed"
+                className="w-full min-h-[56px] outline-none rounded-md border-stone-300 text-gray-600 text-lg resize-none placeholder:text-gray-300 bg-transparent py-1 leading-relaxed"
                 rows={1}
               />
             </div>
@@ -304,8 +304,12 @@ export const Hero: React.FC = () => {
                 </button>
 
                 {/* Dropdown Menu */}
-                {isModelMenuOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-full sm:w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                
+									<div className={`absolute top-full left-0 mt-2 w-full sm:w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-[1000] animate-in fade-in slide-in-from-top-2 duration-200
+										${isModelMenuOpen 
+											? "opacity-100 scale-100 translate-y-0" 
+											: "opacity-0 scale-95 -translate-y-2 pointer-events-none"
+										}`}>
                         <div className="py-1">
                             <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Recommended</div>
                             {models.slice(0, 2).map((model) => (
@@ -334,7 +338,7 @@ export const Hero: React.FC = () => {
                             ))}
                         </div>
                     </div>
-                )}
+                
               </div>
               
               {/* Backdrop for dropdown */}
@@ -400,7 +404,7 @@ export const Hero: React.FC = () => {
         </div>
       ))}
 
-      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[#FAFAFA] to-transparent z-20 pointer-events-none"></div>
+      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[#FAFAFA] to-transparent z-10 pointer-events-none"></div>
     </div>
   );
 };
