@@ -17,7 +17,7 @@ export const Newsletter: React.FC = () => {
            <div className="flex gap-2 max-w-md">
              <input 
                type="email" 
-               placeholder="Write your mail here" 
+               placeholder="Enter your email address" 
                className="flex-1 px-6 py-3 rounded-full border border-gray-300 bg-transparent focus:ring-1 focus:ring-black focus:border-black outline-none transition-all"
              />
              <button className="bg-black text-white px-8 py-3 rounded-full hover:bg-gray-800 transition-colors flex items-center gap-2 font-medium">

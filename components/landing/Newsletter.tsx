@@ -12,12 +12,12 @@ export const Newsletter: React.FC = () => {
            <h2 className="text-3xl md:text-5xl font-bold text-gray-900 mt-2 mb-4 tracking-tight">
              Get our weekly manga <br/> recommendations
            </h2>
-           <p className="text-gray-500 mb-8">No Spam. No Scam. Just Manga.</p>
+           <p className="text-gray-500 mb-8">From our reading list to yours</p>
 
            <div className="flex gap-2 max-w-md">
              <input 
                type="email" 
-               placeholder="Write your mail here" 
+               placeholder="Enter your email address" 
                className="flex-1 px-6 py-3 rounded-full border border-gray-300 bg-transparent focus:ring-1 focus:ring-black focus:border-black outline-none transition-all"
              />
              <button className="bg-black text-white px-8 py-3 rounded-full hover:bg-gray-800 transition-colors flex items-center gap-2 font-medium">
