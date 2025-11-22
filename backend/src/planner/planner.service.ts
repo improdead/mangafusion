@@ -195,7 +195,7 @@ export class PlannerService {
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
-        temperature: 0.7,
+        // Note: GPT-5-mini only supports default temperature of 1, so we omit it
         response_format: { type: 'json_object' },
       });
 
@@ -344,9 +344,21 @@ export class PlannerService {
         },
         {
           "panel_number": 2,
+          "character": "Aoi",
+          "text": "I need to find out...",
+          "type": "thought"
+        },
+        {
+          "panel_number": 3,
           "character": null,
           "text": "The wind howled through the empty streets",
           "type": "narration"
+        },
+        {
+          "panel_number": 3,
+          "character": null,
+          "text": "WHOOSH",
+          "type": "sound_effect"
         }
       ],
       "prompt": "<aoi.png> stands on the rooftop at dusk..."
@@ -376,6 +388,8 @@ export class PlannerService {
       '- In each page.prompt reference characters via <asset_filename> tags used in characters[].',
       '- dialogues: Write compelling dialogue, thoughts, narration, and sound effects for each panel.',
       '- Include 3-6 dialogue entries per page matching the panel count in layout_hints.',
+      '- Dialogue type must be EXACTLY one of: "dialogue", "thought", "narration", "sound_effect" (no other values).',
+      '- For "dialogue" and "thought" types, character must be the character name. For "narration" and "sound_effect", character should be null.',
       '- Dialogue should advance the story, reveal character, and create engaging manga reading experience.',
       '- Output must be valid JSON and fit the schema exactly.',
       '- CRITICAL: Return exactly 10 pages, numbered 1 through 10.',

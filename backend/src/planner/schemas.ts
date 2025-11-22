@@ -16,7 +16,7 @@ export const CastMemberSchema = z.object({
  */
 export const PanelDialogueSchema = z.object({
   panel_number: z.number().int().positive('Panel number must be a positive integer'),
-  character: z.string().optional(),
+  character: z.string().nullish(), // Accept string, null, or undefined
   text: z.string().min(1, 'Dialogue text cannot be empty'),
   type: z.enum(['dialogue', 'thought', 'narration', 'sound_effect']),
 });
