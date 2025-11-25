@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { RefinementService } from './refinement.service';
 
-@Controller('api/refinement')
+@Controller('refinement')
 export class RefinementController {
   private readonly logger = new Logger(RefinementController.name);
 

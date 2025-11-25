@@ -35,7 +35,10 @@ async function findOpenPort(start: number, maxAttempts = 10): Promise<number> {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { logger: ['log', 'error', 'warn'] });
+  const isDev = process.env.NODE_ENV === 'development';
+  const app = await NestFactory.create(AppModule, {
+    logger: isDev ? ['error', 'warn'] : ['log', 'error', 'warn']
+  });
 
   // Set global API prefix
   app.setGlobalPrefix('api');

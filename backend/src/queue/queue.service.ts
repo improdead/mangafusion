@@ -32,7 +32,7 @@ export class QueueService {
     const url = process.env.REDIS_URL;
     if (url) {
       // Page generation queue (lower priority, parallel processing)
-      this.pageQueue = new Queue('generate:page', {
+      this.pageQueue = new Queue('generate-page', {
         connection: { url },
         defaultJobOptions: {
           removeOnComplete: 100,
@@ -46,7 +46,7 @@ export class QueueService {
       });
 
       // Character generation queue (higher priority, runs before pages)
-      this.characterQueue = new Queue('generate:character', {
+      this.characterQueue = new Queue('generate-character', {
         connection: { url },
         defaultJobOptions: {
           removeOnComplete: 100,
@@ -59,9 +59,9 @@ export class QueueService {
         },
       });
 
-      this.logger.log('BullMQ enabled with multiple queues (REDIS_URL detected)');
+      this.logger.log('BullMQ enabled');
     } else {
-      this.logger.log('BullMQ disabled (no REDIS_URL) - using in-process generation');
+      this.logger.debug('BullMQ disabled - using in-process generation');
     }
   }
 

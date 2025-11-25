@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { getRendererConfig } from './config';
@@ -20,6 +20,7 @@ export type RenderRequest = {
 
 @Injectable()
 export class RendererService {
+    private readonly logger = new Logger(RendererService.name);
     private readonly geminiApiKey = process.env.GEMINI_API_KEY;
     private readonly openaiApiKey = process.env.OPENAI_API_KEY;
     private readonly config = getRendererConfig();
@@ -55,8 +56,7 @@ export class RendererService {
         const prompt = this.buildPrompt(request);
 
         try {
-            console.log(`Generating image for page ${request.pageNumber} with OpenAI ${this.config.openaiModel}`);
-            console.log(`Prompt: ${prompt.slice(0, 200)}...`);
+            // Removed verbose logging - only log errors
 
             // Note: gpt-image-1 supports up to 32k characters; DALL-E 3 has 4k limit
             // We'll generate based on text prompt only (no image editing support)
@@ -69,8 +69,6 @@ export class RendererService {
                 style: 'natural', // More suitable for manga than 'vivid'
                 response_format: 'b64_json', // Request base64 for consistent handling
             });
-
-            console.log('OpenAI call completed, processing response...');
 
             let imageBuffer: Buffer;
             const imageData = response.data?.[0];
@@ -89,7 +87,7 @@ export class RendererService {
                 throw new Error('OpenAI response missing both b64_json and url fields');
             }
 
-            console.log(`Generated image buffer: ${imageBuffer.length} bytes`);
+            // Image buffer generated successfully
 
             // Upload to storage
             let finalImageUrl: string;
@@ -98,18 +96,18 @@ export class RendererService {
 
             if (this.storage.enabled) {
                 finalImageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
-                console.log(`Image uploaded to storage: ${finalImageUrl}`);
+                // Image uploaded successfully
             } else {
-                console.warn('Storage not configured, using fallback placeholder');
+                this.logger.warn('Storage not configured, using fallback placeholder');
                 const shortBeat = encodeURIComponent(request.outline.beat.slice(0, 40));
                 finalImageUrl = `https://placehold.co/1024x1536/FFA500/000000?text=STORAGE+DISABLED%0APAGE+${padded}%0A${shortBeat}`;
             }
 
-            console.log(`Successfully generated page ${request.pageNumber} with OpenAI`);
+            // Successfully generated page
             return { imageUrl: finalImageUrl, seed };
 
         } catch (error) {
-            console.error('OpenAI image generation failed:', error);
+            this.logger.error('OpenAI image generation failed:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);
 
             // Fallback placeholder
@@ -117,7 +115,7 @@ export class RendererService {
             const shortBeat = encodeURIComponent(request.outline.beat.slice(0, 40));
             const fallbackUrl = `https://placehold.co/1024x1536/FF6B6B/FFFFFF?text=OPENAI+ERROR%0APAGE+${padded}%0A${shortBeat}`;
 
-            console.log(`Using error fallback: ${fallbackUrl}`);
+            // Using error fallback
             return { imageUrl: fallbackUrl, seed };
         }
     }
@@ -130,8 +128,7 @@ export class RendererService {
         const prompt = this.buildPrompt(request);
 
         try {
-            console.log(`Generating image for page ${request.pageNumber} with Gemini ${this.config.geminiModel}`);
-            console.log(`Prompt: ${prompt.slice(0, 200)}...`);
+            // Generating image with Gemini
 
             // Initialize the Gemini image model
             const model = this.geminiClient.getGenerativeModel({
@@ -144,7 +141,7 @@ export class RendererService {
             });
 
             // Generate image with Gemini
-            console.log('Calling Gemini image generation...');
+            // Calling Gemini image generation
             const parts: any[] = [{ text: prompt }];
             // Attach base image if editing
             if (request.baseImageUrl) {
@@ -154,7 +151,7 @@ export class RendererService {
                     const b64 = Buffer.from(ab).toString('base64');
                     parts.push({ inlineData: { data: b64, mimeType: 'image/png' } });
                 } catch (e) {
-                    console.warn('Failed to fetch baseImageUrl for editing', e);
+                    this.logger.warn('Failed to fetch baseImageUrl for editing', e);
                     parts.push({ text: `Reference current page image: ${request.baseImageUrl}` });
                 }
             }
@@ -198,7 +195,7 @@ export class RendererService {
 
             const result = await model.generateContent({ contents: [{ role: 'user', parts }] });
             
-            console.log('Gemini call completed, processing response...');
+            // Processing Gemini response
             const response = result.response;
             
             // Check if we have candidates in the response
@@ -215,13 +212,13 @@ export class RendererService {
                 for (const part of candidate.content.parts) {
                     // Check for inline data (base64 encoded image)
                     if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
-                        console.log(`Found image data: ${part.inlineData.mimeType}`);
+                        // Found image data
                         imageBuffer = Buffer.from(part.inlineData.data, 'base64');
                         break;
                     }
                     // Check for file data (if using file uploads)
                     else if (part.fileData && part.fileData.mimeType?.startsWith('image/')) {
-                        console.log(`Found file data: ${part.fileData.mimeType}`);
+                        // Found file data
                         // Note: fileData would need additional handling to fetch the actual file
                         throw new Error('File data format not yet supported');
                     }
@@ -232,13 +229,13 @@ export class RendererService {
             if (!imageBuffer) {
                 const textContent = candidate.content?.parts?.find(part => part.text)?.text;
                 if (textContent) {
-                    console.log('Received text response instead of image:', textContent.slice(0, 100));
+                    this.logger.warn('Received text response instead of image');
                     throw new Error('Model returned text instead of image. The model might not support image generation yet.');
                 }
                 throw new Error('No image data found in Gemini response');
             }
 
-            console.log(`Generated image buffer: ${imageBuffer.length} bytes`);
+            // Image buffer generated successfully
             
             // Upload to storage
             let imageUrl: string;
@@ -247,24 +244,24 @@ export class RendererService {
             
             if (this.storage.enabled) {
                 imageUrl = await this.storage.uploadImage(imageBuffer, filename, 'image/png');
-                console.log(`Image uploaded to storage: ${imageUrl}`);
+                // Image uploaded to storage
             } else {
-                console.warn('Storage not configured, cannot save generated image');
+                this.logger.warn('Storage not configured, cannot save generated image');
                 // Create a placeholder that indicates real generation happened but couldn't be saved
                 const shortBeat = encodeURIComponent(request.outline.beat.slice(0, 40));
                 imageUrl = `https://placehold.co/1024x1536/00FF00/000000?text=GENERATED+PAGE+${padded}%0A${shortBeat}%0AStorage+Disabled`;
             }
 
-            console.log(`Successfully generated page ${request.pageNumber}`);
+            // Successfully generated page
             return { imageUrl, seed };
             
         } catch (error) {
-            console.error('Image generation failed:', error);
+            this.logger.error('Image generation failed:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);
             
             // Check if it's a model availability issue
             if (errorMessage.includes('not found') || errorMessage.includes('not available')) {
-                console.warn('Image model may not be available yet, falling back to enhanced placeholder');
+                this.logger.warn('Image model may not be available yet, falling back to enhanced placeholder');
                 const padded = String(request.pageNumber).padStart(2, '0');
                 const shortBeat = encodeURIComponent(request.outline.beat.slice(0, 40));
                 const fallbackUrl = `https://placehold.co/1024x1536/FFA500/000000?text=MODEL+UNAVAILABLE%0APAGE+${padded}%0A${shortBeat}`;
@@ -275,7 +272,7 @@ export class RendererService {
             const padded = String(request.pageNumber).padStart(4, '0');
             const fallbackUrl = `https://placehold.co/1024x1536/FF0000/FFFFFF?text=ERROR%20Page%20${padded}%0A${encodeURIComponent(errorMessage.slice(0, 20))}`;
             
-            console.log(`Using error fallback: ${fallbackUrl}`);
+            // Using error fallback
             return { imageUrl: fallbackUrl, seed };
         }
     }

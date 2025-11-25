@@ -9,6 +9,7 @@ export class LoggerService implements NestLoggerService {
 
   constructor(@Optional() context?: string) {
     try {
+      // Disable pino-pretty transport to avoid worker thread issues in Next.js
       this.logger = pino({
         level: process.env.LOG_LEVEL || (this.isProduction ? 'info' : 'debug'),
         formatters: {
@@ -16,22 +17,7 @@ export class LoggerService implements NestLoggerService {
             return { level: label };
           },
         },
-        ...(this.isProduction
-          ? {
-              // Production: JSON output
-              timestamp: pino.stdTimeFunctions.isoTime,
-            }
-          : {
-              // Development: Pretty output
-              transport: {
-                target: 'pino-pretty',
-                options: {
-                  colorize: true,
-                  translateTime: 'HH:MM:ss.l',
-                  ignore: 'pid,hostname',
-                },
-              },
-            }),
+        timestamp: pino.stdTimeFunctions.isoTime,
       });
 
       if (!this.logger) {
@@ -81,10 +67,18 @@ export class LoggerService implements NestLoggerService {
    * Log with trace context
    */
   private logWithContext(level: string, message: string, context?: any) {
-    const traceContext = this.getTraceContext();
-    const logFn = (this.logger as any)[level];
-    if (typeof logFn === 'function') {
-      logFn.call(this.logger, { ...context, ...traceContext }, message);
+    try {
+      const traceContext = this.getTraceContext();
+      const logFn = (this.logger as any)[level];
+      if (typeof logFn === 'function') {
+        logFn.call(this.logger, { ...context, ...traceContext }, message);
+      }
+    } catch (error) {
+      // Silently ignore logging errors to prevent crashes
+      // Fall back to console only for critical errors
+      if (level === 'error') {
+        console.error(message, context);
+      }
     }
   }
 
@@ -112,8 +106,12 @@ export class LoggerService implements NestLoggerService {
    * Log with custom level and structured data
    */
   logStructured(level: 'info' | 'error' | 'warn' | 'debug', data: Record<string, any>, message: string) {
-    const traceContext = this.getTraceContext();
-    this.logger[level]({ ...data, ...traceContext }, message);
+    try {
+      const traceContext = this.getTraceContext();
+      this.logger[level]({ ...data, ...traceContext }, message);
+    } catch (error) {
+      // Silently ignore logging errors
+    }
   }
 
   /**
@@ -131,15 +129,19 @@ export class LoggerService implements NestLoggerService {
     error?: string;
     cost?: number;
   }) {
-    const traceContext = this.getTraceContext();
-    this.logger.info(
-      {
-        ...traceContext,
-        metric_type: 'ai_api_call',
-        ...metrics,
-      },
-      `AI API call: ${metrics.provider}/${metrics.model} - ${metrics.operation}`,
-    );
+    try {
+      const traceContext = this.getTraceContext();
+      this.logger.info(
+        {
+          ...traceContext,
+          metric_type: 'ai_api_call',
+          ...metrics,
+        },
+        `AI API call: ${metrics.provider}/${metrics.model} - ${metrics.operation}`,
+      );
+    } catch (error) {
+      // Silently ignore logging errors
+    }
   }
 
   /**
@@ -154,15 +156,19 @@ export class LoggerService implements NestLoggerService {
     error?: string;
     metadata?: Record<string, any>;
   }) {
-    const traceContext = this.getTraceContext();
-    this.logger.info(
-      {
-        ...traceContext,
-        metric_type: 'manga_generation',
-        ...metrics,
-      },
-      `Manga ${metrics.operation}: ${metrics.status} ${metrics.pageNumber ? `(page ${metrics.pageNumber})` : ''}`,
-    );
+    try {
+      const traceContext = this.getTraceContext();
+      this.logger.info(
+        {
+          ...traceContext,
+          metric_type: 'manga_generation',
+          ...metrics,
+        },
+        `Manga ${metrics.operation}: ${metrics.status} ${metrics.pageNumber ? `(page ${metrics.pageNumber})` : ''}`,
+      );
+    } catch (error) {
+      // Silently ignore logging errors
+    }
   }
 
   /**

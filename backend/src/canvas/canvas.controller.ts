@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { CanvasService } from './canvas.service';
 
-@Controller('api/canvas')
+@Controller('canvas')
 export class CanvasController {
   private readonly logger = new Logger(CanvasController.name);
 

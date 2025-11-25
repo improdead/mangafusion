@@ -11,6 +11,7 @@ export default function CreatePage() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Array<{role: 'user' | 'assistant', content: string | any}>>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [config, setConfig] = useState<any>(null);
   
   // New states for model selector
@@ -261,12 +262,40 @@ export default function CreatePage() {
                     <h2 className="font-bold text-gray-900 text-lg">Episode Config</h2>
                 </div>
                 {config && (
-                    <button 
-                        className="group flex items-center gap-2 text-xs bg-gray-900 text-white px-4 py-2 rounded-full font-medium hover:bg-black transition-all shadow-lg shadow-gray-200 hover:-translate-y-0.5"
-                        onClick={() => alert("Start Generation! (Link to Planner flow)")}
+                    <button
+                        className="group flex items-center gap-2 text-xs bg-gray-900 text-white px-4 py-2 rounded-full font-medium hover:bg-black transition-all shadow-lg shadow-gray-200 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={async () => {
+                          console.log('Start Generation clicked');
+                          console.log('Config:', config);
+                          setIsGenerating(true);
+                          try {
+                            console.log('Posting to /api/planner...');
+                            const response = await axios.post('/api/planner', config);
+                            console.log('Planner response:', response.data);
+                            const episode = response.data;
+                            console.log('Redirecting to:', `/episodes/${episode.id}`);
+                            router.push(`/episodes/${episode.id}`);
+                          } catch (error: any) {
+                            console.error('Failed to start generation:', error);
+                            console.error('Error details:', error.response?.data || error.message);
+                            alert(`Failed to start generation: ${error.response?.data?.error || error.message}`);
+                          } finally {
+                            setIsGenerating(false);
+                          }
+                        }}
+                        disabled={isLoading || isGenerating}
                     >
-                        <span>Start Generation</span>
-                        <Sparkles className="w-3 h-3 text-yellow-400 group-hover:animate-spin" />
+                        {isGenerating ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Starting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Start Generation</span>
+                            <Sparkles className="w-3 h-3 text-yellow-400 group-hover:animate-spin" />
+                          </>
+                        )}
                     </button>
                 )}
             </div>

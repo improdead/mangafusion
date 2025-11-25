@@ -1,77 +1,72 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
 @Injectable()
 export class BuilderService {
   private readonly logger = new Logger(BuilderService.name);
-  private readonly geminiApiKey = process.env.GEMINI_API_KEY;
+  private readonly openaiApiKey = process.env.OPENAI_API_KEY;
   private readonly serpApiKey = process.env.SERPAPI_API_KEY;
-  private readonly genAI: GoogleGenerativeAI | null = null;
+  private readonly openai: OpenAI | null = null;
 
   constructor() {
-    if (this.geminiApiKey) {
-      this.genAI = new GoogleGenerativeAI(this.geminiApiKey);
+    if (this.openaiApiKey) {
+      this.openai = new OpenAI({ apiKey: this.openaiApiKey });
     }
   }
 
   async refinePrompt(userPrompt: string): Promise<any> {
-    this.logger.log(`Refining prompt: ${userPrompt}`);
-
     // 1. Search Web (if key available)
     let searchContext = '';
     if (this.serpApiKey) {
       try {
-        this.logger.log('Searching web for context...');
         const searchResults = await this.searchWeb(userPrompt);
         searchContext = `Web Search Context (use this to inform the manga configuration):\n${searchResults}\n\n`;
       } catch (e) {
-        this.logger.warn('SerpApi failed or not configured properly', e);
+        this.logger.warn('SerpApi failed', e);
       }
-    } else {
-        this.logger.log('No SERPAPI_API_KEY, skipping web search.');
     }
 
     // 2. Refine with LLM
-    if (!this.genAI) {
-       this.logger.warn('No GEMINI_API_KEY, using mock refinement.');
+    if (!this.openai) {
+       this.logger.warn('No OPENAI_API_KEY, using mock refinement.');
        return this.mockRefinement(userPrompt);
     }
 
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
-    const systemPrompt = `
-      You are an expert manga editor and producer. Your goal is to take a user's vague idea and turn it into a detailed "Episode Seed" configuration for an AI manga generator.
-      
-      The user wants: "${userPrompt}"
-      
-      ${searchContext}
-      
-      Based on the user's request and the web research (if any), create a JSON object with the following structure (do not add markdown fences, just JSON):
-      {
-        "title": "Catchy Title",
-        "description": "Detailed synopsis...",
-        "genre_tags": ["genre1", "genre2"],
-        "tone": "adjectives describing tone (e.g. Dark, Whimsical)",
-        "setting": "Time and place",
-        "visual_vibe": "Art style description (e.g. 90s Cyberpunk, Watercolor, High Contrast Black & White)",
-        "cast": [
-           { "name": "Name", "role": "Protagonist", "description": "Visual description: hair, eyes, clothing" }
-        ]
-      }
-      
-      Return ONLY valid JSON.
-    `;
+    const systemPrompt = `You are an expert manga editor and producer. Your goal is to take a user's vague idea and turn it into a detailed "Episode Seed" configuration for an AI manga generator.
+
+Based on the user's request and the web research (if any), create a JSON object with the following structure:
+{
+  "title": "Catchy Title",
+  "description": "Detailed synopsis...",
+  "genre_tags": ["genre1", "genre2"],
+  "tone": "adjectives describing tone (e.g. Dark, Whimsical)",
+  "setting": "Time and place",
+  "visual_vibe": "Art style description (e.g. 90s Cyberpunk, Watercolor, High Contrast Black & White)",
+  "cast": [
+     { "name": "Name", "role": "Protagonist", "description": "Visual description: hair, eyes, clothing" }
+  ]
+}
+
+Return ONLY valid JSON, no markdown fences.`;
+
+    const userMessage = `${searchContext}The user wants: "${userPrompt}"`;
 
     try {
-        const result = await model.generateContent(systemPrompt);
-        const response = result.response;
-        const text = response.text();
-        
-        // Basic JSON extraction
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        let jsonStr = jsonMatch ? jsonMatch[0] : text;
-        
-        return JSON.parse(jsonStr);
+        const completion = await this.openai.chat.completions.create({
+          model: 'gpt-5-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          response_format: { type: 'json_object' },
+        });
+
+        const text = completion.choices[0]?.message?.content;
+        if (!text) {
+          throw new Error('No response from OpenAI');
+        }
+
+        return JSON.parse(text);
     } catch (e) {
         this.logger.error('Failed to generate/parse content', e);
         return this.mockRefinement(userPrompt);
