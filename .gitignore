@@ -11,3 +11,17 @@ playwright-report
 .env.local
 .env.*.local
 
+
+# Security - added by Esprit scan 92d8da77
+*.pem
+*.key
+*.p12
+*.pfx
+.env.production
+.env.development
+secrets/
+credentials/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
