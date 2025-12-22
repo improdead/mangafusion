@@ -18,6 +18,7 @@ import {
 import { generateStubOutline, mergeWithStub } from './planner.fallback';
 import { LoggerService } from '../observability/logger.service';
 import { TracingService } from '../observability/tracing.service';
+import { validateAndSanitizeSeed, containsInjectionPatterns } from './prompt-sanitizer';
 
 /**
  * Error types for better error handling
@@ -130,14 +131,26 @@ export class PlannerService {
    */
   private validateInput(seed: EpisodeSeed): void {
     try {
+      // First validate structure with Zod
       EpisodeSeedSchema.parse(seed);
-      this.logger.debug('Input validation passed');
+      
+      // Then sanitize and validate content
+      const sanitized = validateAndSanitizeSeed(seed);
+      
+      // Check for injection patterns in original seed (for monitoring)
+      const seedString = JSON.stringify(seed);
+      if (containsInjectionPatterns(seedString)) {
+        this.logger.warn('Potential prompt injection pattern detected in seed input');
+      }
+      
+      this.logger.debug('Input validation and sanitization passed');
     } catch (error) {
       if (error instanceof ZodError) {
         const details = formatZodError(error);
         this.logger.error('Input validation failed', undefined, { details });
         throw new PlannerValidationError('Invalid episode seed data', details);
       }
+      this.logger.error('Input sanitization failed', error instanceof Error ? error.stack : undefined);
       throw error;
     }
   }
