@@ -16,6 +16,7 @@ enum PageStatus {
 
 model Episode {
   id            String   @id @default(uuid())
+  userId        String   // Owner of this episode
   seedInput     Json
   outline       Json?
   rendererModel String?
@@ -24,12 +25,15 @@ model Episode {
   pages         Page[]
   characters    Character[]
 
+  @@index([userId])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([userId, createdAt])
 }
 
 model Page {
   id         String     @id @default(uuid())
+  userId     String     // Owner of this page
   episodeId  String
   pageNumber Int
   status     PageStatus
@@ -44,9 +48,11 @@ model Page {
   canvas  Canvas?
 
   @@unique([episodeId, pageNumber])
+  @@index([userId])
   @@index([episodeId])
   @@index([status])
   @@index([episodeId, status])
+  @@index([userId, episodeId])
 }
 
 model Character {
@@ -67,6 +73,7 @@ model Character {
 
 model Canvas {
   id                String              @id @default(uuid())
+userId            String              // Owner of this canvas
   pageId            String              @unique
   canvasData        Json?               // Serialized Fabric.js canvas data
   thumbnailUrl      String?
